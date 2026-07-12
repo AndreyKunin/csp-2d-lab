@@ -1,0 +1,24 @@
+@use 'variables' as *;
+
+.results {
+  display: flex;
+  height: calc(100vh - 10mm);
+  margin-top: 5mm;
+}
+
+.solutionsList {
+  width: 100mm;
+  padding-right: 5mm;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+
+.layoutLink {
+  font-size: 4mm;
+}
+
+.selectedLayout {
+  font-weight: bold;
+  background-color: $success-color;
+}

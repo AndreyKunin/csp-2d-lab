@@ -1,0 +1,31 @@
+<svg width="80" height="30" viewBox="0 0 80 30" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+        <filter id="outset">
+            <feOffset in="SourceGraphic" dx="1" dy="1" result="offset"/>
+            <feFlood flood-color="#f0f0f0" flood-opacity="0.8" result="white"/>
+            <feComposite in="white" in2="offset" operator="in" result="highlight"/>
+            <feOffset in="SourceGraphic" dx="-1" dy="-1" result="shadow-offset"/>
+            <feFlood flood-color="#666666" flood-opacity="0.6" result="shadow"/>
+            <feComposite in="shadow" in2="shadow-offset" operator="in" result="shadow-final"/>
+            <feMerge>
+                <feMergeNode in="shadow-final"/>
+                <feMergeNode in="SourceGraphic"/>
+                <feMergeNode in="highlight"/>
+            </feMerge>
+        </filter>
+    </defs>
+    <rect x="2" y="2" width="76" height="26" rx="2" fill="transparent" stroke="#0e0a0b" stroke-width="2"
+          filter="url(#outset)"/>
+    <g id="svgGroup"  transform="translate(28, 9)" stroke-linecap="round" fill-rule="evenodd" font-size="9pt" stroke="#0e0a0b" stroke-width="0.25mm"
+       fill="#0e0a0b" style="stroke:#0e0a0b;stroke-width:0.25mm;fill:#0e0a0b">
+        <path d="M 0 11.719 L 0 0 L 6.445 0 L 6.445 1.172 L 1.172 1.172 L 1.172 4.688 L 5.859 4.688 L 5.859 5.86 L 1.172 5.86 L 1.172 10.547 L 7.031 10.547 L 7.031 11.719 L 0 11.719 Z"
+              id="0" vector-effect="non-scaling-stroke"/>
+        <path d="M 8.74 11.719 L 8.74 0 L 12.256 0 Q 13.711 0 14.741 1.031 Q 15.771 2.061 15.771 3.516 L 15.771 8.204 Q 15.771 9.659 14.741 10.689 Q 13.711 11.719 12.256 11.719 L 8.74 11.719 Z M 12.256 1.172 L 9.912 1.172 L 9.912 10.547 L 12.256 10.547 Q 13.223 10.547 13.911 9.859 Q 14.6 9.17 14.6 8.204 L 14.6 3.516 Q 14.6 2.549 13.911 1.861 Q 13.223 1.172 12.256 1.172 Z"
+              id="1" vector-effect="non-scaling-stroke"/>
+        <path d="M 17.627 11.719 L 17.627 0 L 18.799 0 L 18.799 11.719 L 17.627 11.719 Z" id="2"
+              vector-effect="non-scaling-stroke"/>
+        <path d="M 20.654 0 L 27.686 0 L 27.686 1.172 L 24.756 1.172 L 24.756 11.719 L 23.584 11.719 L 23.584 1.172 L 20.654 1.172 L 20.654 0 Z"
+              id="3" vector-effect="non-scaling-stroke"/>
+    </g>
+</svg>
+

@@ -1,0 +1,70 @@
+@use 'variables' as *;
+
+.pagination {
+  user-select: none;
+  text-wrap: nowrap;
+  display: flex;
+  flex-wrap: nowrap;
+  justify-content: center;
+  height: 10mm;
+  text-align: center;
+  padding-top: 1mm;
+}
+
+.pagination > div:nth-child(1) {
+  width: 10mm;
+}
+
+.pagination > div:nth-child(2) {
+  display: flex;
+  flex-wrap: nowrap;
+  justify-content: center;
+  overflow-x: hidden;
+}
+
+.pagination > div:nth-child(2) > div {
+  text-align: center;
+  overflow-x: hidden;
+  text-wrap: nowrap;
+}
+
+.pagination > div:nth-child(3) {
+  width: 10mm;
+}
+
+.pagination a {
+  cursor: pointer;
+  line-height: 9mm;
+  user-select: none;
+}
+
+.pagination > div span {
+  color: #5703EF;
+  font-size: 10mm;
+  line-height: 5mm;
+  vertical-align: top;
+  font-weight: bold;
+  margin: 0 1mm;
+}
+
+.pagination > div:nth-child(2) > div:last-of-type > span {
+  display: none;
+}
+
+.pagination > div:not(:nth-child(2)) span {
+  line-height: 7mm;
+  cursor: pointer;
+  visibility: hidden;
+  margin: 0;
+}
+
+.pagination > div:not(:nth-child(2)) span.available {
+  visibility: visible;
+}
+
+.pagination a.selectedPage {
+  cursor: auto;
+  font-weight: bold;
+  border-radius: 45mm 2mm 30mm 75mm/2mm 30mm 2mm 3mm;
+  border-bottom: solid 0.7mm #5703EF;
+}

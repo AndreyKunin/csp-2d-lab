@@ -1,0 +1,140 @@
+@use 'variables' as *;
+
+.inputForm {
+  overflow-y: auto;
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.formSection {
+  width: 100mm;
+  margin-bottom: 1mm;
+}
+
+.sectionHeader {
+  color: $primary-color;
+  font-size: 6mm;
+  font-weight: bold;
+}
+
+.sectionSpacer {
+  height: 5mm;
+}
+
+.formBreak {
+  width: 100%;
+}
+
+.actions {
+  display: flex;
+  font-size: 5mm;
+  height: 8mm;
+  margin-top: auto;
+  justify-content: flex-end;
+}
+
+.actions div {
+  border-radius: 67mm 4mm 59mm 4mm/4mm 59mm 4mm 67mm;
+  border: 0.7mm solid transparent;
+  margin-right: 5mm;
+  width: 20mm;
+  padding-bottom: 1mm;
+  text-align: center;
+  cursor: pointer;
+}
+
+.submitButton {
+  background-color: $success-color;
+}
+
+.clearButton {
+  background-color: $clear-color;
+}
+
+.fileButton {
+  background-color: $file-color;
+}
+
+.stickyButton {
+  position: fixed;
+  top: calc(100vh - 10mm);
+}
+
+.actions .stickyButton {
+  border-radius: 67mm 4mm 59mm 4mm/4mm 59mm 4mm 67mm;
+  border-color: $border-color;
+}
+
+.actions .saveButton {
+  margin-right: 27mm;
+}
+
+.actions div:last-child {
+  margin-right: 2mm;
+}
+
+.actions div:hover {
+  border-radius: 67mm 4mm 59mm 4mm/4mm 59mm 4mm 67mm;
+  border-color: $border-color;
+}
+
+.actions div.loading {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.twoColumns {
+  display: flex;
+  flex-direction: row;
+}
+
+.twoColumns > div {
+  flex: 1;
+}
+
+.bottomLine {
+  // top-left top-right bottom-right bottom-left / top-left top-right bottom-right bottom-left
+  border-radius: 67mm 4mm 120mm 97mm/4mm 59mm 8mm 6mm;
+  border-bottom: solid 0.7mm #989C9F;
+  height: 5mm;
+  width: 100mm;
+  margin-bottom: 1mm;
+}
+
+.rightLine {
+  border-radius: 67% 3px 10% 4px/4px 59% 4px 67%;
+  border-right: solid 0.7mm #989C9F;
+  width: 5mm;
+  margin-right: 5mm;
+  margin-bottom: 2mm;
+}
+
+.inputField {
+  margin-top: 1mm;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+}
+
+.inputField > div {
+  flex: 1;
+  font-size: 5mm;
+}
+
+.inputField > div:first-child {
+  padding-left: 7mm;
+}
+
+.inputField input[type=text] {
+  background: transparent;
+  border-radius: 67mm 4mm 59mm 4mm/4mm 59mm 4mm 67mm;
+  border: 0.7mm solid $border-color;
+  width: 13mm;
+  font-family: 'script', cursive;
+  color: $primary-color;
+  caret-color: $border-color;
+  font-size: 4mm;
+  font-weight: bold;
+  outline: 0;
+}

@@ -1,0 +1,97 @@
+@use 'variables' as *;
+
+.radioGroup {
+  display: flex;
+  flex-wrap: nowrap;
+}
+
+.radioGroup.horizontal {
+  flex-direction: row;
+  align-items: center;
+}
+
+.radioGroup.vertical {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.radioGroup > div {
+  cursor: pointer;
+  position: relative;
+  margin-right: 10mm;
+}
+
+.radioGroup.horizontal > div:not(:last-child) {
+  margin-right: 10mm;
+}
+
+.radioGroup.vertical > div:not(:last-child) {
+  margin-bottom: 3mm;
+}
+
+.radioGroup > div > div:nth-child(1) {
+  text-align: center;
+  border-radius: 33mm 2mm 29mm 2mm/2mm 29mm 2mm 33mm;
+  border: solid 0.7mm #989C9F;
+  padding: 0;
+  width: 3mm;
+  height: 3mm;
+  position: absolute;
+  top: 1mm;
+  left: 0;
+}
+
+.radioGroup > div > div:nth-child(2) {
+  padding: 0;
+  width: 7mm;
+  height: 7mm;
+  background: url("/checkmark_7mm.png") no-repeat 0 0;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.radioGroup > div > div:nth-child(2).hidden {
+  visibility: hidden;
+  opacity: 0;
+}
+
+.radioGroup > div > div:nth-child(2).visible {
+  visibility: visible;
+  opacity: 1;
+}
+
+.radioGroup > div > div:nth-child(3) {
+  font-size: 5mm;
+  margin-left: 7mm;
+}
+
+.sawWidthRadioGroup {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: nowrap;
+  margin-top: 1mm;
+}
+
+.sawWidthRadioGroup .radioGroup.horizontal > div {
+  margin-right: 5mm;
+}
+
+.sawWidthRadioGroup input[type=text] {
+  background: transparent;
+  border-radius: 67mm 4mm 59mm 4mm/4mm 59mm 4mm 67mm;
+  border: 0.7mm solid $border-color;
+  width: 13mm;
+  font-family: 'script', cursive;
+  color: $primary-color;
+  caret-color: $border-color;
+  font-size: 4mm;
+  font-weight: bold;
+  outline: 0;
+  margin-left: 5mm;
+}
+
+.sawWidthRadioGroup input[type=text].invalidInput {
+  border-color: red;
+}

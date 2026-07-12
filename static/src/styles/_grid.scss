@@ -1,0 +1,205 @@
+@use 'variables' as *;
+
+.dynamicGrid,
+.fixedGrid,
+.propertyGrid,
+.resultsGrid {
+  border-radius: 67% 3px 59% 4px/4px 59% 4px 67%;
+  border: solid 0.7mm $border-color;
+}
+
+.fixedGrid.hidden {
+  visibility: hidden;
+}
+
+.fixedGrid.visible {
+  visibility: visible;
+}
+
+.dynamicGrid > div:not(:last-child),
+.propertyGrid > div:not(:last-child),
+.resultsGrid > div:not(:last-child) {
+  border-radius: 67mm 4mm 59mm 67mm/4mm 59mm 4mm 4mm;
+  border-bottom: solid 0.7mm $border-color;
+}
+
+.fixedGrid > div:not(:last-child) {
+  border-radius: 67mm 4mm 59mm 1.1mm/4mm 59mm 4mm 67mm;
+  border-bottom: solid 0.7mm $border-color;
+}
+
+.dynamicGrid > div,
+.fixedGrid > div,
+.propertyGrid > div,
+.resultsGrid > div {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  padding: 0;
+}
+
+.resultsGrid > div:hover {
+  font-weight: bold;
+}
+
+.dynamicGrid > div > div:first-child {
+  flex-grow: 1;
+  text-align: center;
+}
+
+.propertyGrid > div > div:first-child {
+  flex-grow: 2;
+  padding-left: 5mm;
+}
+
+.fixedGrid > div > div:first-child,
+.resultsGrid > div > div:first-child {
+  margin-left: 3mm;
+}
+
+.dynamicGrid > div:first-child > div,
+.fixedGrid > div:first-child > div,
+.resultsGrid > div:first-child > div {
+  font-weight: bold;
+  font-size: 5mm;
+}
+
+.dynamicGrid > div > div,
+.fixedGrid > div > div {
+  flex-grow: 2;
+}
+
+.propertyGrid > div > div,
+.resultsGrid > div > div {
+  flex-grow: 1;
+}
+
+.dynamicGrid > div > div,
+.fixedGrid > div > div,
+.propertyGrid > div > div,
+.resultsGrid > div > div {
+  flex-basis: 0;
+  text-align: left;
+  padding: 0.8mm 0 0.8mm;
+  font-size: 4mm;
+}
+
+.resultsGrid > div:not(:first-child) > div {
+  padding: 1.5mm 0 1.5mm;
+  cursor: pointer;
+}
+.resultsGrid sup {
+  font-size: 2.5mm;
+}
+
+.dynamicGrid > div > div:first-child input {
+  width: 10mm;
+  text-align: center;
+}
+
+.propertyGrid > div > div:first-child input {
+  width: 100%;
+  font-size: 5mm;
+  font-weight: normal;
+  margin-top: 0;
+}
+
+.dynamicGrid > div > div:last-child,
+.propertyGrid > div > div:last-child {
+  text-align: center;
+  display: flex;
+  justify-content: center;
+}
+
+.dynamicGrid > div > div:last-child {
+  flex-grow: 1;
+}
+
+.propertyGrid > div > div:last-child {
+  flex-grow: 0.5;
+}
+
+.dynamicGrid > div > div:last-child > div,
+.propertyGrid > div > div:last-child > div {
+  text-align: center;
+  border-radius: 67mm 4mm 59mm 4mm/4mm 59mm 4mm 67mm;
+  border: solid 0.7mm $border-color;
+  padding: 0;
+  width: 5mm;
+  height: 5mm;
+  cursor: pointer;
+  user-select: none;
+  color: $action-color;
+}
+
+.dynamicGrid > div > div:last-child > div {
+  font-size: 8mm;
+}
+
+.propertyGrid > div > div:last-child > div {
+  font-size: 5mm;
+  font-weight: bold;
+}
+
+.dynamicGrid > div > div:last-child > div > span {
+  line-height: 2.5mm;
+  vertical-align: top;
+}
+
+.propertyGrid > div > div:last-child > div > span:first-child {
+  line-height: 5.5mm;
+  vertical-align: top;
+}
+
+.dynamicGrid input[type=text],
+.fixedGrid input[type=text],
+.propertyGrid input[type=text] {
+  background: transparent;
+  border-radius: 67mm 4mm 59mm 4mm/4mm 59mm 4mm 67mm;
+  border: 0.7mm solid transparent;
+  width: 20mm;
+  font-family: 'script', cursive;
+  color: $primary-color;
+  caret-color: $border-color;
+  font-size: 4mm;
+  font-weight: bold;
+  outline: 0;
+}
+
+.propertyGrid input[type=text] {
+  margin-top: 0.5mm;
+}
+
+.dynamicGrid input[type=text]:hover,
+.dynamicGrid input[type=text]:focus,
+.fixedGrid input[type=text]:hover,
+.fixedGrid input[type=text]:focus,
+.propertyGrid input[type=text]:hover,
+.propertyGrid input[type=text]:focus {
+  border-color: $border-color;
+}
+
+.dynamicGrid input[type=text].invalidInput,
+.fixedGrid input[type=text].invalidInput,
+.propertyGrid input[type=text].invalidInput,
+.inputField input[type=text].invalidInput {
+  color: $error-color;
+  border-bottom-color: $error-color;
+}
+
+.dynamicGrid input[type=text]:hover.invalidInput,
+.dynamicGrid input[type=text]:focus.invalidInput,
+.fixedGrid input[type=text]:hover.invalidInput,
+.fixedGrid input[type=text]:focus.invalidInput,
+.propertyGrid input[type=text]:hover.invalidInput,
+.propertyGrid input[type=text]:focus.invalidInput,
+.inputField input[type=text]:hover.invalidInput,
+.inputField input[type=text]:focus.invalidInput {
+  border-color: $error-color;
+}
+
+.dynamicGrid input[type=text]:disabled,
+.fixedGrid input[type=text]:disabled,
+.propertyGrid input[type=text]:disabled {
+  border-color: transparent;
+}

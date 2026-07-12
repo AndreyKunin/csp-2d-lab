@@ -1,0 +1,10 @@
+@use 'variables' as *;
+
+.layout {
+  display: flex;
+  margin: 5mm;
+  flex-direction: column;
+}
+
+.layout > div:last-of-type {
+}

@@ -1,0 +1,69 @@
+# ── Windows ───────────────────────────────────────────────────────────────────
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# ── IntelliJ IDEA ─────────────────────────────────────────────────────────────
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# ── Go ────────────────────────────────────────────────────────────────────────
+# Binaries
+csp2d-windows-amd64*.exe
+csp2d-macos-arm64*
+
+# Build output
+dist/
+
+# Docs (incomplete)
+docs/design.md
+
+# Test cache & coverage
+*.test
+*.out
+coverage.html
+coverage.txt
+
+# Go workspace
+go.work
+go.work.sum
+
+# ── Node.js / npm ─────────────────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.node_repl_history
+package-lock.json
+
+# ── Frontend build artifacts ───────────────────────────────────────────────────
+static/dist/
+static/js/bundle.js
+static/js/bundle.js.map
+static/css/main.css
+static/css/main.css.map
+/static/static/js/bundle.js
+/static/static/js/bundle.js.map
+/static/static/css/main.css
+/static/static/css/main.css.map
+static/index.html
+/static/static/index.html
+
+# ── Secrets & config ──────────────────────────────────────────────────────────
+*.env
+.env.*
+*.key
+*.pem
+*.p12
+*.pfx
+*.secret
+secrets/
+/scripts.txt

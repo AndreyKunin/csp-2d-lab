@@ -1,0 +1,37 @@
+@use 'variables' as *;
+
+body {
+  background-size: 5mm 5mm;
+  background-image: linear-gradient(to right, $grid-color 0.7mm, transparent 1px),
+  linear-gradient(to bottom, $grid-color 0.7mm, transparent 1px);
+  font-family: $font-script;
+  color: $primary-color;
+  margin: 0;
+}
+
+a {
+  color: $primary-color;
+  font-size: 5mm;
+  text-decoration: none;
+  user-select: none;
+  cursor: pointer;
+}
+
+.error {
+  color: $error-color;
+}
+
+.itemsList {
+  font-size: 5mm;
+  margin-bottom: 2mm;
+}
+
+.itemsList ul {
+  padding-inline-start: 5mm;
+}
+
+.itemsList ul > li {
+  list-style-type: '- ';
+  margin-left: 0;
+  margin-bottom: 3mm;
+}

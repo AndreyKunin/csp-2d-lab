@@ -1,0 +1,19 @@
+<svg width="80" height="30" viewBox="0 0 80 30" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+        <filter id="outset">
+            <feOffset in="SourceGraphic" dx="1" dy="1" result="offset"/>
+            <feFlood flood-color="#f0f0f0" flood-opacity="0.8" result="white"/>
+            <feComposite in="white" in2="offset" operator="in" result="highlight"/>
+            <feOffset in="SourceGraphic" dx="-1" dy="-1" result="shadow-offset"/>
+            <feFlood flood-color="#666666" flood-opacity="0.6" result="shadow"/>
+            <feComposite in="shadow" in2="shadow-offset" operator="in" result="shadow-final"/>
+            <feMerge>
+                <feMergeNode in="shadow-final"/>
+                <feMergeNode in="SourceGraphic"/>
+                <feMergeNode in="highlight"/>
+            </feMerge>
+        </filter>
+    </defs>
+    <rect x="2" y="2" width="76" height="26" rx="2" fill="transparent" stroke="#0e0a0b" stroke-width="2" filter="url(#outset)"/>
+    <polygon points="37,10 37,20 47,15" fill="#0e0a0b" stroke="#0e0a0b" stroke-width="1"/>
+</svg>
