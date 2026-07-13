@@ -1,10 +1,11 @@
 # ── Configurable ports ────────────────────────────────────────────────────────
 LOCAL_PORT   ?= 8080
-SERVER_HOST   ?= 0.0.0.0
-SERVER_PORT   ?= 8080
-DEV_UI_PORT   ?= 3000
-DOCKER_IMAGE  ?= csp2d
-DOCKER_TAG    ?= latest
+SERVER_HOST  ?= 0.0.0.0
+SERVER_PORT  ?= 8080
+DEV_UI_PORT  ?= 3000
+DOCKER_IMAGE ?= csp2d
+DOCKER_TAG   ?= latest
+VERSION      ?= 1.0
 
 # ── Local Go build & run ──────────────────────────────────────────────────────
 .PHONY: build
@@ -30,7 +31,7 @@ npm-start:
 build-windows: npm-build
 	mkdir -p dist
 	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
-		go build -tags desktop -ldflags="-s -w -H windowsgui" -o dist/csp2d-windows-amd64.exe .
+		go build -tags desktop -ldflags="-s -w -H windowsgui" -o dist/csp2d-windows-amd64-$(VERSION).exe .
 
 .PHONY: build-macos
 build-macos: npm-build
