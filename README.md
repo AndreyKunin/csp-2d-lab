@@ -38,7 +38,7 @@ It can be used
 - **PDF export** — Download a printable report of the best layout found
 - **Client-server architecture** — Allows running the containerized server remotely, in a Cloud, and connecting via browser. 
   Server is multi-tenant, can run multiple simulations in isolation.
-- **Portable package** — A single executable file includes the server that can run directly from the operating system (macOS, Windows).
+- **Portable package** — A single executable file includes the server that can run directly from the operating system (Windows).
 
 ---
 
@@ -47,7 +47,7 @@ It can be used
 Depend on where you run the application:
 
 1. Containerized: Linux, make, Docker
-2. Standalone: Windows 10+ or macOS 14+
+2. Standalone: Windows 10+
 
 ---
 
@@ -70,7 +70,6 @@ Docker image is nowhere, needs to be built from the sources.
 
 1. Download your version
    1. Windows: {TODO: ADD LINK}
-   2. macOS: {TODO: ADD LINK}
 2. Run it from the downloaded file
 
 Once you start the standalone executable file, it will try to open your browser automatically with the server URL. 
