@@ -60,7 +60,7 @@ Depend on where you run the application:
 Docker image is nowhere, needs to be built from the sources.
 
    ```bash
-   git clone {TODO: ADD URL like https://github.com/your-org/csp2d.git}
+   git clone https://github.com/AndreyKunin/csp-2d-lab.git
    cd csp2d
    make docker-build
    make docker-run
@@ -69,7 +69,7 @@ Docker image is nowhere, needs to be built from the sources.
 **Standalone**
 
 1. Download your version
-   1. Windows: {TODO: ADD LINK}
+   1. Windows: [csp2d-windows-amd64-1.0.exe](https://github.com/AndreyKunin/csp-2d-lab/releases/download/1.0/csp2d-windows-amd64-1.0.exe)
 2. Run it from the downloaded file
 
 Once you start the standalone executable file, it will try to open your browser automatically with the server URL. 
