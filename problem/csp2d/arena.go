@@ -1,5 +1,7 @@
 package csp2d
 
+import "csp2d/util"
+
 // Arena holds reusable scratch buffers and generational allocators
 // for postfix arrays. It is owned by a single Csp2dProblemImpl and
 // is NOT goroutine-safe.
@@ -14,12 +16,20 @@ package csp2d
 //     from the survivors).
 //
 // At the end of an epoch (RotateGenerations):
-//  1. elites' postfix data is copied into a fresh eliteArena;
-//  2. currentGen is reset to zero;
+//  1. elites' postfix data is copied into a fresh eliteArena (PromoteElites);
+//  2. currentGen, whose contents are now dead, is reset — or replaced by a
+//     larger buffer when the epoch's demand outgrew it;
 //  3. currentGen and nextGen are swapped.
 //
 // This guarantees that readers (parents) and writers (children) never
 // alias the same memory within an epoch.
+//
+// Sizing: the generation arenas start at initialPerIndividualMultiplier
+// postfixes per individual and follow the observed demand (ints requested from
+// nextGen during an epoch, including the ones that overflowed to the heap) plus
+// demandMargin. All buffers come from the process-wide arena budget
+// (arena_budget.go); when it is exhausted an arena stays at the size it has and
+// the excess is allocated on the heap, where the GC can collect it.
 type Arena struct {
 	forestBuffer       []MeteredNode
 	forestSliceBuffer  []int
@@ -35,6 +45,10 @@ type Arena struct {
 	nextGen    *PostfixArena
 	eliteArena *PostfixArena
 
+	// genTarget is the desired generation-arena capacity in ints: the largest
+	// observed per-epoch demand plus margin (the initial estimate before that).
+	genTarget int
+
 	// Reusable scratch for the numeric-label projection used by the
 	// elite-protection lookup (toNumLabels). One buffer is enough because
 	// every call site consumes the result synchronously (build → use as
@@ -42,30 +56,30 @@ type Arena struct {
 	numLabelScratch []int32
 }
 
-// perIndividualBudget estimates how many ints one individual may consume
-// in a single epoch across all allocation sites:
-//   - 1× postfixLen for offspring postfix (PMX or random)
-//   - 1× postfixLen for cached meteredForest postfixes (sum of leaves+ops)
-//   - up to 4× postfixLen for mutation trials (mutateCriticalOperatorFlip)
-//   - up to 4× postfixLen for reinsertion trials (mutateEliminateAndRepair)
-//   - safety multiplier
-const perIndividualMultiplier = 16
+// Measured arena demand per individual per epoch is about 5 (20 parts) to 12
+// (150 parts) postfix lengths, most of it rejected trial children (MEM-02). The
+// initial size is deliberately below that: an over-sized buffer counts against
+// the memory limit for the whole job, while an under-sized one costs a single
+// epoch of heap allocations before the arena grows to the observed demand.
+const initialPerIndividualMultiplier = 4
 
-func computePerIndividualBudget(postfixLen int) int {
-	budget := postfixLen * perIndividualMultiplier
-	if budget < 64 {
-		budget = 64
-	}
-	return budget
+// eliteMultiplier: an elite needs its postfix plus its forest's postfixes,
+// about 2 postfix lengths.
+const eliteMultiplier = 4
+
+// demandMargin is added to the observed demand when an arena grows (1/4 = 25%).
+const demandMarginDivisor = 4
+
+// minPerIndividual is the minimum budget per individual, in ints.
+const minPerIndividual = 64
+
+func perIndividual(postfixLen, multiplier int) int {
+	return max(postfixLen*multiplier, minPerIndividual)
 }
 
 func NewArena(postfixLen int, populationSize int, eliteCount int) *Arena {
-	per := computePerIndividualBudget(postfixLen)
-	genCapacity := populationSize * per
-	eliteCapacity := eliteCount * per
-	if eliteCapacity < per {
-		eliteCapacity = per
-	}
+	genCapacity := populationSize * perIndividual(postfixLen, initialPerIndividualMultiplier)
+	eliteCapacity := max(eliteCount, 1) * perIndividual(postfixLen, eliteMultiplier)
 
 	return &Arena{
 		forestBuffer:       make([]MeteredNode, postfixLen),
@@ -78,6 +92,7 @@ func NewArena(postfixLen int, populationSize int, eliteCount int) *Arena {
 		currentGen:         NewPostfixArena("currentGen", genCapacity),
 		nextGen:            NewPostfixArena("nextGen", genCapacity),
 		eliteArena:         NewPostfixArena("elite", eliteCapacity),
+		genTarget:          genCapacity,
 	}
 }
 
@@ -97,42 +112,60 @@ func (a *Arena) GenAllocN(n int) []int { return a.nextGen.Alloc(n) }
 // EliteAlloc copies src into the elite arena (used during promotion only).
 func (a *Arena) EliteAlloc(src []int) []int { return a.eliteArena.AllocFilled(src) }
 
-// RotateGenerations swaps currentGen with nextGen and resets the new currentGen.
+// RotateGenerations swaps currentGen with nextGen and resets the new nextGen.
 // Call this AFTER an epoch completes (after crossover/mutation/fitness, before
 // the next epoch starts reading parents).
 //
-// Auto-grows the arena if the previous epoch overflowed.
+// The buffer that is reset held the parents of the epoch that just ended, so
+// nothing references it any more. If the epoch's demand exceeded the arena,
+// that buffer is replaced by one sized to the demand plus margin, as far as the
+// arena budget allows. The other buffer (now holding the parents) is resized
+// the same way at the next rotation, when it is dead in turn.
 func (a *Arena) RotateGenerations() {
-	// If the just-completed epoch overflowed nextGen, grow the buffers so
-	// future epochs have headroom. Both gen buffers must stay the same size
-	// because they swap roles.
-	overflow := a.nextGen.OverflowCount()
-	if overflow > 0 {
-		// Grow proportionally: at least double, plus a safety margin.
-		newCap := a.nextGen.Capacity() * 2
-		// Reallocate both — they swap roles, so they must share capacity.
-		a.currentGen = NewPostfixArena("currentGen", newCap)
-		a.nextGen = NewPostfixArena("nextGen", newCap)
-		return
+	if demand := a.nextGen.Demand(); demand > a.genTarget {
+		a.genTarget = demand + demand/demandMarginDivisor
 	}
 
-	// Reset what is about to become the next "next" buffer (i.e. the one
-	// that held this epoch's parents — they're no longer needed because
-	// elites have been promoted and non-elites are being replaced).
-	a.currentGen.Reset()
-	a.currentGen, a.nextGen = a.nextGen, a.currentGen
+	dead := a.currentGen
+	if dead.Capacity() < a.genTarget {
+		// Only reallocate when the budget allows a larger buffer than the current
+		// one; otherwise keep it (no reallocation churn at the budget ceiling).
+		// (availableArenaInts is MaxInt when unlimited: never add to it.)
+		possible := dead.Capacity() + min(a.genTarget-dead.Capacity(), availableArenaInts())
+		if possible > dead.Capacity() {
+			name, overflows := dead.name, dead.OverflowCount()
+			dead.Release()
+			dead = NewPostfixArena(name, possible)
+			dead.overflow = overflows // keep the warning throttle across buffers
+			if dead.Capacity() < a.genTarget {
+				util.Info.Printf("PostfixArena[%s]: %d of %d ints granted (arena budget)", name, dead.Capacity(), a.genTarget)
+			}
+		} else {
+			dead.Reset()
+		}
+	} else {
+		dead.Reset()
+	}
+
+	a.currentGen, a.nextGen = a.nextGen, dead
 }
 
 // RebuildEliteArena replaces the elite arena with a fresh one sized for
 // `eliteCount`. The previous elite arena (and slices into it) become
 // unreachable — callers must have copied any survivors out beforehand.
 func (a *Arena) RebuildEliteArena(eliteCount int) {
-	per := computePerIndividualBudget(a.postfixLen)
-	cap_ := eliteCount * per
-	if cap_ < per {
-		cap_ = per
-	}
-	a.eliteArena = NewPostfixArena("elite", cap_)
+	overflows := a.eliteArena.OverflowCount()
+	a.eliteArena.Release()
+	a.eliteArena = NewPostfixArena("elite", max(eliteCount, 1)*perIndividual(a.postfixLen, eliteMultiplier))
+	a.eliteArena.overflow = overflows // keep the warning throttle across epochs
+}
+
+// Release returns all arena buffers to the process budget. Call it when the
+// job no longer needs the arena; later allocations fall back to the heap.
+func (a *Arena) Release() {
+	a.currentGen.Release()
+	a.nextGen.Release()
+	a.eliteArena.Release()
 }
 
 // GetNumLabelScratch returns an empty []int32 with cap >= n. The buffer is

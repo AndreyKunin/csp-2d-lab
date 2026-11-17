@@ -41,6 +41,20 @@ func NewCsp2dProblem(inputs []InputDefinition, constraints *Constraints) problem
 	}
 }
 
+// Release implements ga.Releaser. The job calls it once its goroutine has
+// ended: the arenas go back to the process-wide arena budget, and the
+// population and protection set become garbage. Statistics and results were
+// published as copies, so nothing reads them any more; GetInputsSize keeps
+// working.
+func (p *Csp2dProblemImpl) Release() {
+	if p.arena != nil {
+		p.arena.Release()
+		p.arena = nil
+	}
+	p.population = nil
+	p.protectedGenotype = nil
+}
+
 func (p *Csp2dProblemImpl) GetInputsSize() int {
 	return len(p.inputs)
 }
@@ -75,6 +89,9 @@ func (p *Csp2dProblemImpl) NewPopulation(size int, eliteCount int, rnd *rand.Ran
 
 	postfixLen := len(p.inputs)*2 - 1
 	p.buildLabelRanks()
+	if p.arena != nil {
+		p.arena.Release() // a previous population's arena goes back to the budget
+	}
 	p.arena = NewArena(postfixLen, size, eliteCount)
 
 	for len(species) < size {

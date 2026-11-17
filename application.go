@@ -5,15 +5,15 @@ package main
 import (
 	"context"
 	"csp2d/mvc"
+	"csp2d/util"
 	_ "net/http/pprof" // registers /debug/pprof/* on DefaultServeMux
-	"runtime/debug"
 )
 
 func main() {
-	debug.SetGCPercent(-1)          // GOGC=off
-	debug.SetMemoryLimit(134217728) // 128 MB
-
 	configuration := mvc.GetConfiguration("application.yaml")
+	if _, err := mvc.ApplyMemorySettings(configuration.Memory); err != nil {
+		util.Error.Fatal(err)
+	}
 	ctx := context.Background()
 	mvc.StartWebApp(configuration, ctx)
 }

@@ -78,6 +78,14 @@ type ResultSnapshotter interface {
 	SnapshotResult() (any, error)
 }
 
+// Releaser is implemented by problems that hold memory worth freeing as soon
+// as the job's goroutine has ended (arena buffers, the population). The manager
+// calls Release exactly once, after Simulate returns, fails, panics or is
+// cancelled; the published snapshot stays available.
+type Releaser interface {
+	Release()
+}
+
 func (job *SimulationJob) touch(now time.Time) { job.lastAccess.Store(now.UnixNano()) }
 
 func (job *SimulationJob) lastAccessTime() time.Time { return time.Unix(0, job.lastAccess.Load()) }

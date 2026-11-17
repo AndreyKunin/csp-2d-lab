@@ -11,7 +11,6 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"runtime"
-	"runtime/debug"
 	"time"
 
 	"github.com/getlantern/systray"
@@ -19,6 +18,9 @@ import (
 
 func run(port int, ln net.Listener, url string) {
 	configuration := mvc.GetConfigurationFromBytes(embeddedConfig)
+	if _, err := mvc.ApplyMemorySettings(configuration.Memory); err != nil {
+		util.Error.Fatal(err)
+	}
 	ctx := context.Background()
 
 	go mvc.StartWebAppEmbedded(configuration, embeddedStatic, ln, port, ctx)
@@ -31,8 +33,6 @@ func run(port int, ln net.Listener, url string) {
 }
 
 func main() {
-	debug.SetGCPercent(-1)
-	debug.SetMemoryLimit(134217728)
 
 	port, ln, err := findFreePort(8080)
 	if err != nil {

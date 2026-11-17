@@ -78,20 +78,27 @@ func TestArenaGenerationLifetime(t *testing.T) {
 	}
 }
 
-// UT-ARN-06: an overflowing epoch doubles both generation arenas, and slices
-// allocated before the growth stay readable.
+// UT-ARN-06: an overflowing epoch grows the generation arenas to the observed
+// demand (served + overflowed ints) plus margin: the next-generation arena at
+// the next rotation, the other one at the rotation after. Slices allocated
+// before the growth stay readable for their generation lifetime.
 func TestArenaGrowsAfterOverflow(t *testing.T) {
 	ar := csp2d.NewArena(1, 1, 1) // budget: 64 ints per individual minimum
+	defer ar.Release()
 	before, _ := ar.GenCapacitiesForTest()
 	kept := ar.GenAlloc([]int{4, 5, 6})
 	_ = ar.GenAllocN(before + 1) // overflow
+	demand := 3 + before + 1
 	ar.RotateGenerations()
-	cur, next := ar.GenCapacitiesForTest()
-	if cur != 2*before || next != 2*before {
-		t.Fatalf("capacities after growth %d/%d, want %d/%d", cur, next, 2*before, 2*before)
+	if _, next := ar.GenCapacitiesForTest(); next < demand {
+		t.Fatalf("next generation arena %d ints after an epoch that needed %d", next, demand)
 	}
 	if !equalInts(kept, []int{4, 5, 6}) {
 		t.Fatalf("slice allocated before growth changed: %v", kept)
+	}
+	ar.RotateGenerations()
+	if cur, next := ar.GenCapacitiesForTest(); cur < demand || next < demand {
+		t.Fatalf("capacities after two rotations %d/%d, want both >= %d", cur, next, demand)
 	}
 }
 

@@ -20,6 +20,8 @@ type Configuration struct {
 	Defaults struct {
 		SimulationParameters SimulationParameters `yaml:"simulationParameters"`
 	} `yaml:"defaults"`
+	// Memory: GOMEMLIMIT, GOGC and the arena budget (see memory.go).
+	Memory MemoryConfig `yaml:"memory"`
 	// Jobs: housekeeping limits; zero or missing values select the defaults
 	// (see ga.Limits).
 	Jobs struct {

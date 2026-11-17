@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"runtime/debug"
 	"sync"
 	"time"
 )
@@ -296,6 +297,18 @@ func (sm *SimulationManagerImpl) runSimulation(job *SimulationJob) {
 	// Registered first, so it runs last: the final status is set before
 	// waiting control calls are released.
 	defer close(job.finished)
+	defer func() {
+		// Runs after the recover below has set the final status, and before
+		// finished is closed. Nothing but this goroutine uses the problem.
+		if releaser, ok := job.problem.(Releaser); ok {
+			releaser.Release()
+			// Without new allocations the GC would not run again for up to two
+			// minutes (the runtime's forced period), so the released memory would
+			// stay resident. Collect it and return it to the OS now; jobs end
+			// rarely, and this only blocks the ending job's goroutine.
+			debug.FreeOSMemory()
+		}
+	}()
 	defer func() {
 		if r := recover(); r != nil {
 			err := fmt.Errorf("simulation panicked: %v", r)
