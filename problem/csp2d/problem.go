@@ -164,12 +164,11 @@ func (p *Csp2dProblemImpl) NewRandomIndividual(rnd *rand.Rand) (problem.Individu
 		if len(incompleteStack) > 0 || len(completeStack) != 1 {
 			return nil, errors.New("invalid elements: unable to build a postfix notation")
 		}
-		arr := p.arena.GenAlloc(completeStack[0])
-
-		if p.isProtected(arr) {
+		// Protected attempts are rejected before they take arena space (MEM-02).
+		if p.isProtected(completeStack[0]) {
 			continue
 		}
-		return newIndividual(arr), nil
+		return newIndividual(p.arena.GenAlloc(completeStack[0])), nil
 	}
 	// cannot create even a random individual, the gene pool is full
 	return nil, nil
@@ -201,8 +200,29 @@ func (p *Csp2dProblemImpl) evaluateFitness(individual *Csp2dIndividualImpl) erro
 	return nil
 }
 
+// getForest decodes the individual and copies the sheets' postfixes into the
+// generation arena, so the forest can be cached on the individual.
 func (p *Csp2dProblemImpl) getForest(individual *Csp2dIndividualImpl) ([]MeteredNode, error) {
-	postfix := individual.postfix
+	forest, err := p.decodeForest(individual.postfix)
+	if err != nil {
+		return nil, err
+	}
+	// Copy surviving nodes out of the pool so the pool can be reused.
+	// Postfix slices are allocated from the generational arena: they live
+	// for at most one epoch unless the individual becomes an elite.
+	result := make([]MeteredNode, len(forest))
+	for i, node := range forest {
+		copied := node
+		copied.postfix = p.arena.GenAlloc(node.postfix)
+		result[i] = copied
+	}
+	return result, nil
+}
+
+// decodeForest decodes a postfix into its sheets without taking arena space:
+// the sheets' postfixes live in the forest slice buffer and are valid only
+// until the next decode. Use it for trials that are usually discarded.
+func (p *Csp2dProblemImpl) decodeForest(postfix []int) ([]MeteredNode, error) {
 	n := len(postfix)
 
 	// Borrow from pools
@@ -217,7 +237,7 @@ func (p *Csp2dProblemImpl) getForest(individual *Csp2dIndividualImpl) ([]Metered
 	for _, id := range postfix {
 		if id < 0 {
 			if len(stack) < 2 {
-				return nil, fmt.Errorf("invalid postfix: %s", p.toString(individual.postfix))
+				return nil, fmt.Errorf("invalid postfix: %s", p.toString(postfix))
 			}
 			right := stack[len(stack)-1]
 			left := stack[len(stack)-2]
@@ -283,25 +303,14 @@ func (p *Csp2dProblemImpl) getForest(individual *Csp2dIndividualImpl) ([]Metered
 	}
 
 	if len(stack) != 1 {
-		return nil, fmt.Errorf("invalid postfix: %s", p.toString(individual.postfix))
+		return nil, fmt.Errorf("invalid postfix: %s", p.toString(postfix))
 	}
 	err := p.validateMetered(stack[0], p.constraints)
 	if err != nil {
 		return nil, err
 	}
 	forest = append(forest, stack[0])
-
-	// Copy surviving nodes out of the pool so the pool can be reused.
-	// Postfix slices are allocated from the generational arena: they live
-	// for at most one epoch unless the individual becomes an elite.
-	result := make([]MeteredNode, len(forest))
-	for i, node := range forest {
-		copied := node
-		copied.postfix = p.arena.GenAlloc(node.postfix)
-		result[i] = copied
-	}
-
-	return result, nil
+	return forest, nil
 }
 
 func (p *Csp2dProblemImpl) validateMetered(node MeteredNode, constraints *Constraints) error {
@@ -514,6 +523,9 @@ func (p *Csp2dProblemImpl) Crossover(crossoverSet []*problem.Individual, rnd *ra
 			if p.isProtected(offspring2.postfix) {
 				continue
 			}
+			// Accepted: copy both children out of the PMX scratch (MEM-02).
+			offspring1.postfix = p.arena.GenAlloc(offspring1.postfix)
+			offspring2.postfix = p.arena.GenAlloc(offspring2.postfix)
 			var o1 problem.Individual = offspring1
 			var o2 problem.Individual = offspring2
 			offspringSet = append(offspringSet, &o1)
@@ -568,6 +580,10 @@ func (p *Csp2dProblemImpl) pmx(parent1 *Csp2dIndividualImpl, parent2 *Csp2dIndiv
 // pmxWithPoints applies PMX to the leaf orders of both parents using the
 // inclusive leaf-index segment [pointLeft, pointRight] and writes the result
 // back into each parent's own operator skeleton.
+//
+// The children's postfixes live in the arena's PMX scratch and are valid only
+// until the next PMX: a caller that keeps a child copies it into the
+// generation arena (Crossover does so after the protection check).
 func (p *Csp2dProblemImpl) pmxWithPoints(parent1 *Csp2dIndividualImpl, parent2 *Csp2dIndividualImpl, pointLeft int, pointRight int) (*Csp2dIndividualImpl, *Csp2dIndividualImpl, error) {
 	var postfix1 = parent1.postfix
 	var postfix2 = parent2.postfix
@@ -620,8 +636,7 @@ func (p *Csp2dProblemImpl) pmxWithPoints(parent1 *Csp2dIndividualImpl, parent2 *
 		}
 	}
 	// Replace leaves with offspring
-	offspringPostfix1 := p.arena.GenAllocN(treeSize)
-	offspringPostfix2 := p.arena.GenAllocN(treeSize)
+	offspringPostfix1, offspringPostfix2 := p.arena.GetPMXOffspring()
 	j1 := 0
 	j2 := 0
 	for i := 0; i < treeSize; i++ {

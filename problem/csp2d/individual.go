@@ -17,14 +17,6 @@ func newIndividual(postfix []int) problem.Individual {
 	}
 }
 
-// CopyWithArena duplicates the individual's postfix using the provided arena.
-// The returned individual lives until the next ResetGeneration.
-func (individual *Csp2dIndividualImpl) CopyWithArena(arena *Arena) *Csp2dIndividualImpl {
-	return &Csp2dIndividualImpl{
-		postfix: arena.GenAlloc(individual.postfix),
-	}
-}
-
 func (individual *Csp2dIndividualImpl) IsFitnessComputed() bool {
 	return individual.meteredForest != nil
 }

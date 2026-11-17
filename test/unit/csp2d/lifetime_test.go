@@ -82,9 +82,10 @@ func lexLess(a, b [3]float64) bool {
 	return false
 }
 
-// checkIndividual validates the genotype and, when fitness is cached, the
-// cached phenotype against a fresh decode of the genotype.
-func checkIndividual(p *csp2d.Csp2dProblemImpl, ind *csp2d.Csp2dIndividualImpl, n int, strict bool) error {
+// checkStructure validates the genotype and, when fitness is cached, that the
+// cached forest is a valid layout of all parts whose every sheet still decodes
+// to its cached size. Memory reuse that overwrites a live buffer breaks it.
+func checkStructure(p *csp2d.Csp2dProblemImpl, ind *csp2d.Csp2dIndividualImpl, n int) error {
 	if ind == nil {
 		return fmt.Errorf("nil individual")
 	}
@@ -107,11 +108,28 @@ func checkIndividual(p *csp2d.Csp2dProblemImpl, ind *csp2d.Csp2dIndividualImpl, 
 				seen[v]++
 			}
 		}
+		decoded, err := p.GetForestForTest(csp2d.NewIndividualForTest(copyInts(tree.Postfix)))
+		if err != nil || len(decoded) != 1 || decoded[0].Long != tree.Long || decoded[0].Short != tree.Short {
+			return fmt.Errorf("cached sheet %d (%gx%g, postfix %v) decodes to %v (%v)", i, tree.Long, tree.Short, tree.Postfix, decoded, err)
+		}
 	}
 	for id, c := range seen {
 		if c != 1 {
 			return fmt.Errorf("cached forest uses part %d %d times", id, c)
 		}
+	}
+	return nil
+}
+
+// checkIndividual runs checkStructure and compares the cached fitness with a
+// fresh decode of the genotype.
+func checkIndividual(p *csp2d.Csp2dProblemImpl, ind *csp2d.Csp2dIndividualImpl, n int, strict bool) error {
+	if err := checkStructure(p, ind, n); err != nil {
+		return err
+	}
+	postfix := ind.PostfixForTest()
+	if ind.ForestForTest() == nil {
+		return nil
 	}
 	// Fresh decode of the genotype.
 	fresh := csp2d.NewIndividualForTest(copyInts(postfix))

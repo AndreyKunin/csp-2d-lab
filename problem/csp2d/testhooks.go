@@ -132,6 +132,8 @@ func (p *Csp2dProblemImpl) IsProtectedForTest(postfix []int) bool   { return p.i
 
 // ---- Crossover -------------------------------------------------------------
 
+// PMXForTest and PMXWithPointsForTest return children whose postfixes live in
+// the PMX scratch: valid until the next PMX call.
 func (p *Csp2dProblemImpl) PMXForTest(parent1, parent2 *Csp2dIndividualImpl, rnd *rand.Rand) (*Csp2dIndividualImpl, *Csp2dIndividualImpl, int, int, error) {
 	return p.pmx(parent1, parent2, rnd)
 }
@@ -146,12 +148,18 @@ func (p *Csp2dProblemImpl) SubtreeSpanForTest(postfix []int, end int) int {
 	return p.subtreeSpan(postfix, end)
 }
 
+// ChangeOperatorForTest and ReplaceElementsForTest copy the new postfix out of
+// the candidate scratch (as Mutation commits it), so it survives later calls.
 func (p *Csp2dProblemImpl) ChangeOperatorForTest(individual *Csp2dIndividualImpl, rnd *rand.Rand) (int, error) {
-	return p.changeOperator(individual, rnd)
+	weight, err := p.changeOperator(individual, rnd)
+	individual.postfix = append([]int(nil), individual.postfix...)
+	return weight, err
 }
 
 func (p *Csp2dProblemImpl) ReplaceElementsForTest(individual *Csp2dIndividualImpl, rnd *rand.Rand) (int, error) {
-	return p.replaceElements(individual, rnd)
+	weight, err := p.replaceElements(individual, rnd)
+	individual.postfix = append([]int(nil), individual.postfix...)
+	return weight, err
 }
 
 func (p *Csp2dProblemImpl) RankCriticalOperatorsForTest(postfix []int) []OperatorCandidate {
@@ -166,7 +174,7 @@ func (p *Csp2dProblemImpl) SelectWorstTreeForTest(forest []NodeView) int {
 // returns the resulting forest.
 func (p *Csp2dProblemImpl) InsertItemGreedyForTest(forest []NodeView, itemID int) ([]NodeView, bool) {
 	nodes := fromViews(forest)
-	ok := p.insertItemGreedyInPlace(nodes, itemID)
+	ok := p.insertItemGreedyInPlace(nodes, itemID) >= 0
 	return toViews(nodes), ok
 }
 
@@ -180,12 +188,25 @@ func (p *Csp2dProblemImpl) ReinsertItemsForTest(base []NodeView, order []int) ([
 	return toViews(nodes), nil
 }
 
+// MutateEliminateAndRepairForTest and MutateCriticalOperatorFlipForTest keep an
+// improved child exactly as Mutation does (without the protection check):
+// committed into the generation arena, with its fitness cached.
 func (p *Csp2dProblemImpl) MutateEliminateAndRepairForTest(parent *Csp2dIndividualImpl, rnd *rand.Rand) (*Csp2dIndividualImpl, bool, error) {
-	return p.mutateEliminateAndRepair(parent, rnd)
+	child, improved, err := p.mutateEliminateAndRepair(parent, rnd)
+	if err == nil && improved {
+		p.commitRepairChild(child, nil)
+	}
+	return child, improved, err
 }
 
 func (p *Csp2dProblemImpl) MutateCriticalOperatorFlipForTest(parent *Csp2dIndividualImpl, rnd *rand.Rand) (*Csp2dIndividualImpl, bool, error) {
-	return p.mutateCriticalOperatorFlip(parent, rnd)
+	child, improved, err := p.mutateCriticalOperatorFlip(parent, rnd)
+	if err == nil && improved {
+		if err = p.evaluateFitness(child); err == nil {
+			child.postfix = p.commitPostfix(child.postfix, nil)
+		}
+	}
+	return child, improved, err
 }
 
 func BuildReinsertionOrdersForTest(items []int, inputs []InputDefinition, rnd *rand.Rand) [][]int {
@@ -211,3 +232,7 @@ func (individual *Csp2dIndividualImpl) SetFitnessForTest(vector [3]float64, valu
 	individual.fitnessVector = vector
 	individual.fitnessValue = value
 }
+
+// GenDemandForTest returns the ints requested from the next-generation arena
+// since the last rotation (served plus overflowed).
+func (a *Arena) GenDemandForTest() int { return a.nextGen.Demand() }

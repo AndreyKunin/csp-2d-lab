@@ -102,7 +102,3 @@ func (a *PostfixArena) Capacity() int {
 func (a *PostfixArena) OverflowCount() uint64 {
 	return atomic.LoadUint64(&a.overflow)
 }
-
-func (a *PostfixArena) ResetOverflowCount() {
-	atomic.StoreUint64(&a.overflow, 0)
-}

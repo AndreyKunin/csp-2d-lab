@@ -28,6 +28,12 @@ func (p *Csp2dProblemImpl) Mutation(mutationRate float64, mutationSet []*problem
 	totalWeight := 0
 	totalMutations := 0
 
+	// owned[i] reports that the individual in slot i was created by this call,
+	// so nothing else references its postfix buffer. The child that supersedes
+	// it is written into that buffer instead of taking new arena space: at the
+	// default rate a slot is mutated several times per epoch (MEM-02).
+	owned := make([]bool, setSize)
+
 	for mutationsAllowed > 0 {
 		mutated := false
 		// randomly choose an individual
@@ -38,6 +44,13 @@ func (p *Csp2dProblemImpl) Mutation(mutationRate float64, mutationSet []*problem
 		if err != nil {
 			return totalMutations, totalWeight, failures, err
 		}
+		var reuse []int // the buffer a kept child may overwrite
+		if owned[individualIndex] {
+			reuse = parent.postfix
+		}
+
+		// Each step returns a candidate built in scratch; it takes arena space
+		// only once it is kept (MEM-02).
 
 		// 1) Try "eliminate-and-repair"
 		var weight = 3
@@ -46,8 +59,10 @@ func (p *Csp2dProblemImpl) Mutation(mutationRate float64, mutationSet []*problem
 			return totalMutations, totalWeight, failures, err
 		}
 		if child != nil && improved && !p.isProtected(child.postfix) {
+			p.commitRepairChild(child, reuse)
 			var result problem.Individual = child
 			mutationSet[individualIndex] = &result
+			owned[individualIndex] = true
 			totalMutations++
 			totalWeight += weight
 			mutationsAllowed -= weight
@@ -62,13 +77,17 @@ func (p *Csp2dProblemImpl) Mutation(mutationRate float64, mutationSet []*problem
 				return totalMutations, totalWeight, failures, err
 			}
 			if child != nil && improved && !p.isProtected(child.postfix) {
+				// Decodes the candidate's scratch postfix; the forest goes to
+				// the arena, the postfix is committed below.
 				err1 := p.evaluateFitness(child)
 				if err1 != nil {
 					return totalMutations, totalWeight, failures, err1
 				}
 				if LessFitness(child, parent) {
+					child.postfix = p.commitPostfix(child.postfix, reuse)
 					var result problem.Individual = child
 					mutationSet[individualIndex] = &result
+					owned[individualIndex] = true
 					totalMutations++
 					totalWeight += weight
 					mutationsAllowed -= weight
@@ -80,18 +99,22 @@ func (p *Csp2dProblemImpl) Mutation(mutationRate float64, mutationSet []*problem
 		// 3) If nothing improved, fall back to the destructive mutation
 		if !mutated {
 			var operator = rnd.Intn(2)
-			individualCopy := parent.CopyWithArena(p.arena)
+			// The operators write the new postfix into scratch (MEM-05: no copy
+			// of the parent beforehand).
+			trial := &Csp2dIndividualImpl{postfix: parent.postfix}
 			if operator < 1 {
-				weight, err = p.changeOperator(individualCopy, rnd)
+				weight, err = p.changeOperator(trial, rnd)
 			} else {
-				weight, err = p.replaceElements(individualCopy, rnd)
+				weight, err = p.replaceElements(trial, rnd)
 			}
 			if err != nil {
 				return totalMutations, totalWeight, failures, err
 			}
-			if !p.isProtected(individualCopy.postfix) {
-				var result problem.Individual = individualCopy
+			if !p.isProtected(trial.postfix) {
+				trial.postfix = p.commitPostfix(trial.postfix, reuse)
+				var result problem.Individual = trial
 				mutationSet[individualIndex] = &result
+				owned[individualIndex] = true
 				totalMutations++
 				totalWeight += weight
 				mutationsAllowed -= weight
@@ -110,11 +133,38 @@ func (p *Csp2dProblemImpl) Mutation(mutationRate float64, mutationSet []*problem
 			}
 
 			mutationSet[individualIndex] = &o1
+			owned[individualIndex] = true
 			failures = failures + 1
 		}
 	}
 
 	return totalMutations, totalWeight, failures, nil
+}
+
+// commitPostfix copies a kept candidate's postfix out of scratch: into reuse,
+// the buffer of the child it supersedes in the same slot, when there is one,
+// otherwise into the generation arena. reuse must be referenced by nothing
+// else; the candidate's forest never points into it (forests are copies).
+func (p *Csp2dProblemImpl) commitPostfix(src, reuse []int) []int {
+	if len(src) > 0 && cap(reuse) >= len(src) {
+		dst := reuse[:len(src)]
+		copy(dst, src)
+		return dst
+	}
+	return p.arena.GenAlloc(src)
+}
+
+// commitRepairChild keeps an eliminate-and-repair candidate: the sheets it
+// re-packed are copied out of the trial buffer into the arena (the others are
+// shared with the parent's forest), then its postfix is committed. It must
+// directly follow mutateEliminateAndRepair, whose freshness flags it reads.
+func (p *Csp2dProblemImpl) commitRepairChild(child *Csp2dIndividualImpl, reuse []int) {
+	for i, fresh := range p.arena.reinsertionFresh {
+		if fresh {
+			child.meteredForest[i].postfix = p.arena.GenAlloc(child.meteredForest[i].postfix)
+		}
+	}
+	child.postfix = p.commitPostfix(child.postfix, reuse)
 }
 
 func (p *Csp2dProblemImpl) mutateEliminateAndRepair(parent *Csp2dIndividualImpl, rnd *rand.Rand) (*Csp2dIndividualImpl, bool, error) {
@@ -185,14 +235,10 @@ func (p *Csp2dProblemImpl) mutateEliminateAndRepair(parent *Csp2dIndividualImpl,
 	}
 
 	// Materialize the top-level postfix only for the winner, with random
-	// operators between trees (this matches the original semantics).
-	totalLen := 0
-	for _, mn := range bestForest {
-		totalLen += len(mn.postfix)
-	}
-	totalLen += len(bestForest) - 1
-
-	childPostfix := p.arena.GenAllocN(totalLen)
+	// operators between trees (this matches the original semantics). The
+	// candidate's postfix and re-packed sheets stay in scratch until the
+	// caller keeps it (commitRepairChild).
+	childPostfix := p.arena.GetCandidatePostfix()
 	for i, mn := range bestForest {
 		childPostfix = append(childPostfix, mn.postfix...)
 		if i > 0 {
@@ -230,7 +276,10 @@ func (p *Csp2dProblemImpl) selectWorstTree(forest []MeteredNode) int {
 	return worstIdx
 }
 
-func (p *Csp2dProblemImpl) insertItemGreedyInPlace(forest []MeteredNode, itemID int) bool {
+// insertItemGreedyInPlace merges the item into the best tree of forest and
+// returns that tree's index, or -1 if the item fits none. The merged postfix is
+// built in the arena's trial buffer.
+func (p *Csp2dProblemImpl) insertItemGreedyInPlace(forest []MeteredNode, itemID int) int {
 	itemMetrics := Metrics{
 		longSide:  p.inputs[itemID].LongSide,
 		shortSide: p.inputs[itemID].ShortSide,
@@ -278,19 +327,17 @@ func (p *Csp2dProblemImpl) insertItemGreedyInPlace(forest []MeteredNode, itemID 
 	}
 
 	if !found {
-		return false
+		return -1
 	}
 
 	// Merge postfixes: item + existing + op OR existing + item + op
 	existing := forest[bestIndex]
-	var arr []int
+	arr := p.arena.TrialAllocN(len(existing.postfix) + 2)
 	if bestItemLeft {
-		arr = p.arena.GenAllocN(len(existing.postfix) + 2)
 		arr = append(arr, itemID)
 		arr = append(arr, existing.postfix...)
 		arr = append(arr, bestOpNum)
 	} else {
-		arr = p.arena.GenAllocN(len(existing.postfix) + 2)
 		arr = append(arr, existing.postfix...)
 		arr = append(arr, itemID)
 		arr = append(arr, bestOpNum)
@@ -301,26 +348,31 @@ func (p *Csp2dProblemImpl) insertItemGreedyInPlace(forest []MeteredNode, itemID 
 		measurements: bestMeasurements,
 	}
 
-	return true
+	return bestIndex
 }
 
 // reinsertItemsForest builds a candidate forest by greedily inserting `order`
 // items into a shallow clone of baseForest. It writes into the shared
-// reinsertion scratch buffer in Arena — the returned slice is INVALIDATED on
-// the next call. The caller must copy the result if it needs to outlive the
-// next call.
+// reinsertion scratch buffer in Arena — the returned slice, the re-packed
+// sheets' postfixes (trial buffer) and the freshness flags
+// (Arena.reinsertionFresh) are INVALIDATED on the next call. The caller must
+// copy what it keeps (commitRepairChild).
 func (p *Csp2dProblemImpl) reinsertItemsForest(baseForest []MeteredNode, order []int) ([]MeteredNode, error) {
+	p.arena.ResetTrialInts()
 	forest := p.arena.GetReinsertionForest()
+	fresh := p.arena.GetReinsertionFresh()
+	defer func() { p.arena.reinsertionFresh = fresh }()
 	for _, t := range baseForest {
 		forest = append(forest, MeteredNode{
 			postfix:      t.postfix, // share — read-only data living in arenas
 			measurements: t.measurements,
 		})
+		fresh = append(fresh, false)
 	}
 
 	for _, itemID := range order {
-		inserted := p.insertItemGreedyInPlace(forest, itemID)
-		if inserted {
+		if index := p.insertItemGreedyInPlace(forest, itemID); index >= 0 {
+			fresh[index] = true
 			continue
 		}
 
@@ -331,13 +383,13 @@ func (p *Csp2dProblemImpl) reinsertItemsForest(baseForest []MeteredNode, order [
 		if !p.isValidMetrics(metrics, p.constraints) {
 			return nil, fmt.Errorf("item %d cannot fit constraints", itemID)
 		}
-		// Singleton sub-postfix lives in the generational postfix arena.
-		singletonPostfix := p.arena.GenAllocN(1)
+		singletonPostfix := p.arena.TrialAllocN(1)
 		singletonPostfix = append(singletonPostfix, itemID)
 		forest = append(forest, MeteredNode{
 			postfix:      singletonPostfix,
 			measurements: metrics,
 		})
+		fresh = append(fresh, true)
 	}
 
 	return forest, nil
@@ -359,33 +411,35 @@ func (p *Csp2dProblemImpl) mutateCriticalOperatorFlip(parent *Csp2dIndividualImp
 		maxTrials = len(candidates)
 	}
 
-	bestChild := parent
+	bestFitness := parent.fitnessVector
 	improved := false
 
-	// Reusable scratch for trial postfixes that are usually discarded.
+	// Trials are decoded in scratch and take no arena space; the best one is
+	// returned as a candidate whose postfix is still in scratch and whose
+	// fitness is not cached. The caller evaluates and commits it if it keeps
+	// it (MEM-02).
 	trial := p.arena.GetTrialPostfix()
+	best := p.arena.GetCandidatePostfix()
 
 	for i := 0; i < maxTrials; i++ {
-		// Build candidate in the reusable scratch
-		trial = trial[:0]
-		trial = append(trial, parent.postfix...)
+		trial = append(trial[:0], parent.postfix...)
 		trial[candidates[i].Index] = FlipOperator(trial[candidates[i].Index])
 
-		// Only commit to the generational arena if we actually keep this child.
-		childPostfix := p.arena.GenAlloc(trial)
-		child := newIndividual(childPostfix).(*Csp2dIndividualImpl)
-		err1 := p.evaluateFitness(child)
+		forest, err1 := p.decodeForest(trial)
 		if err1 != nil {
 			continue
 		}
-
-		if LessFitness(child, bestChild) {
-			bestChild = child
+		if fitness := p.getFitnessVector(forest); LessFitnessRaw(fitness, bestFitness) {
+			best = append(best[:0], trial...)
+			bestFitness = fitness
 			improved = true
 		}
 	}
 
-	return bestChild, improved, nil
+	if !improved {
+		return parent, false, nil
+	}
+	return newIndividual(best).(*Csp2dIndividualImpl), true, nil
 }
 
 func (p *Csp2dProblemImpl) rankCriticalOperators(postfix []int) []OperatorCandidate {
@@ -465,7 +519,8 @@ func buildReinsertionOrders(items []int, inputs []InputDefinition, rnd *rand.Ran
 }
 
 func (p *Csp2dProblemImpl) changeOperator(individual *Csp2dIndividualImpl, rnd *rand.Rand) (int, error) {
-	postfixCopy := p.arena.GenAlloc(individual.postfix)
+	// The new postfix is built in scratch; Mutation commits it if it keeps it.
+	postfixCopy := append(p.arena.GetCandidatePostfix(), individual.postfix...)
 	var individualSize = len(postfixCopy)
 	//find random operator to be changed
 	var index = rnd.Intn(individualSize)
@@ -517,7 +572,7 @@ func (p *Csp2dProblemImpl) replaceElements(individual *Csp2dIndividualImpl, rnd 
 		// Overlapping subtrees: just do an operator flip as a lighter mutation
 		for idx := n - 1; idx >= 0; idx-- {
 			if postfix[idx] < 0 {
-				newPostfix := p.arena.GenAlloc(postfix)
+				newPostfix := append(p.arena.GetCandidatePostfix(), postfix...)
 				newPostfix[idx] = FlipOperator(newPostfix[idx])
 				individual.postfix = newPostfix
 				individual.invalidateCache()
@@ -527,8 +582,9 @@ func (p *Csp2dProblemImpl) replaceElements(individual *Csp2dIndividualImpl, rnd 
 		return 0, nil
 	}
 
-	// Swap the two subtree slices in a new postfix
-	newPostfix := p.arena.GenAllocN(n)
+	// Swap the two subtree slices in a new postfix (built in scratch;
+	// Mutation commits it if it keeps it)
+	newPostfix := p.arena.GetCandidatePostfix()
 	newPostfix = append(newPostfix, postfix[:start1]...)
 	newPostfix = append(newPostfix, sub2...)
 	newPostfix = append(newPostfix, postfix[i1+1:start2]...)

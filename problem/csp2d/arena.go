@@ -37,8 +37,22 @@ type Arena struct {
 	reinsertionPostfix []int
 	postfixLen         int
 
-	// Tier-1: reusable scratch for trial children that are usually discarded.
-	trialPostfix []int
+	// Tier-1: reusable scratch for trial children that are usually discarded
+	// (MEM-02). A candidate is built here and copied into nextGen only when it
+	// is kept. These are fields, not locals: a local buffer whose size is not a
+	// compile-time constant is heap-allocated on every call even when escape
+	// analysis reports that it does not escape.
+	trialPostfix     []int    // a critical-flip trial being decoded
+	candidatePostfix []int    // the candidate child of a mutation step
+	pmxOffspring     [2][]int // the two PMX children of one attempt
+	// trialInts holds the sheets re-packed by eliminate-and-repair (bump
+	// allocated, rewound for every reinsertion order). It grows when an order
+	// needs more; slices into a replaced buffer stay valid.
+	trialInts   []int
+	trialCursor int
+	// reinsertionFresh[i] reports whether reinsertion forest node i was built
+	// in trialInts (true) or is shared with the parent's forest (false).
+	reinsertionFresh []bool
 
 	// Tier-2: double-buffered generational + elite arenas.
 	currentGen *PostfixArena
@@ -56,11 +70,12 @@ type Arena struct {
 	numLabelScratch []int32
 }
 
-// Measured arena demand per individual per epoch is about 5 (20 parts) to 12
-// (150 parts) postfix lengths, most of it rejected trial children (MEM-02). The
-// initial size is deliberately below that: an over-sized buffer counts against
-// the memory limit for the whole job, while an under-sized one costs a single
-// epoch of heap allocations before the arena grows to the observed demand.
+// Measured arena demand per individual per epoch is about 3 postfix lengths
+// (20 to 150 parts): only kept individuals and their forests are allocated here,
+// trials are built in scratch. The initial size is that plus a margin. An
+// over-sized buffer counts against the memory limit for the whole job, while an
+// under-sized one costs a single epoch of heap allocations before the arena
+// grows to the observed demand.
 const initialPerIndividualMultiplier = 4
 
 // eliteMultiplier: an elite needs its postfix plus its forest's postfixes,
@@ -87,6 +102,10 @@ func NewArena(postfixLen int, populationSize int, eliteCount int) *Arena {
 		reinsertionForest:  make([]MeteredNode, postfixLen),
 		reinsertionPostfix: make([]int, 0, postfixLen),
 		trialPostfix:       make([]int, 0, postfixLen),
+		candidatePostfix:   make([]int, 0, postfixLen),
+		pmxOffspring:       [2][]int{make([]int, 0, postfixLen), make([]int, 0, postfixLen)},
+		trialInts:          make([]int, 2*postfixLen),
+		reinsertionFresh:   make([]bool, 0, postfixLen),
 		numLabelScratch:    make([]int32, 0, postfixLen),
 		postfixLen:         postfixLen,
 		currentGen:         NewPostfixArena("currentGen", genCapacity),
@@ -101,6 +120,29 @@ func (a *Arena) GetForestSliceBuffer() []int         { return a.forestSliceBuffe
 func (a *Arena) GetReinsertionForest() []MeteredNode { return a.reinsertionForest[:0] }
 func (a *Arena) GetReinsertionPostfix() []int        { return a.reinsertionPostfix[:0] }
 func (a *Arena) GetTrialPostfix() []int              { return a.trialPostfix[:0] }
+func (a *Arena) GetCandidatePostfix() []int          { return a.candidatePostfix[:0] }
+
+// GetPMXOffspring returns the two empty PMX child buffers.
+func (a *Arena) GetPMXOffspring() ([]int, []int) { return a.pmxOffspring[0][:0], a.pmxOffspring[1][:0] }
+
+// GetReinsertionFresh returns the empty freshness flags of the reinsertion forest.
+func (a *Arena) GetReinsertionFresh() []bool { return a.reinsertionFresh[:0] }
+
+// ResetTrialInts rewinds trialInts: every slice it handed out is dead.
+func (a *Arena) ResetTrialInts() { a.trialCursor = 0 }
+
+// TrialAllocN returns an empty slice with capacity n from trialInts. When the
+// buffer is full it is replaced by a larger one; earlier slices keep the old
+// buffer alive until they are dropped.
+func (a *Arena) TrialAllocN(n int) []int {
+	if a.trialCursor+n > len(a.trialInts) {
+		a.trialInts = make([]int, max(2*len(a.trialInts), n))
+		a.trialCursor = 0
+	}
+	s := a.trialInts[a.trialCursor : a.trialCursor : a.trialCursor+n]
+	a.trialCursor += n
+	return s
+}
 
 // GenAlloc allocates a slice in the NEXT-generation arena and copies src into it.
 // Use this for NEW offspring/children produced this epoch.

@@ -18,7 +18,7 @@ func withArenaBudget(t *testing.T, extra int64) (before int64) {
 	return before
 }
 
-// UT-ARN-08: the initial generation arenas are sized modestly (at most 4
+// UT-ARN-17: the initial generation arenas are sized modestly (at most 4
 // postfixes per individual) and grow from observed demand, instead of
 // reserving 16 postfixes per individual up front.
 func TestArenaInitialSizeIsModest(t *testing.T) {
