@@ -50,33 +50,27 @@ func (sm *SimulationManagerImpl) StartSimulation(simulation *Simulation, problem
 }
 
 func (sm *SimulationManagerImpl) PauseSimulation(id string) error {
-	sm.mu.Lock()
-	job, exists := sm.jobs[id]
-	sm.mu.Unlock()
-
-	if !exists {
-		return fmt.Errorf("simulation %s not found", id)
-	}
-	status := job.GetStatus()
-	if status.Status == StatusPaused {
-		return fmt.Errorf("simulation %s is already paused", id)
-	}
-
-	select {
-	case job.PauseChan <- struct{}{}:
-		select {
-		case <-job.PauseAckChan:
-		case <-job.done:
-			return fmt.Errorf("simulation %s was deleted", id)
-		}
-	default:
-		return fmt.Errorf("pause signal already sent for simulation %s", id)
-	}
-
-	return nil
+	return sm.control(id, StatusRunning, func(job *SimulationJob) (chan struct{}, chan struct{}) {
+		return job.PauseChan, job.PauseAckChan
+	})
 }
 
 func (sm *SimulationManagerImpl) ResumeSimulation(id string) error {
+	return sm.control(id, StatusPaused, func(job *SimulationJob) (chan struct{}, chan struct{}) {
+		return job.ResumeChan, job.ResumeAckChan
+	})
+}
+
+// control sends one control signal (pause or resume) to a job's goroutine and
+// waits for its acknowledgement.
+//
+// Control calls on a job are serialised (controlMu), so the status check and the
+// signal cannot interleave with another control call. The job must be in the
+// required status; a finished or failed job is refused instead of waiting for an
+// acknowledgement that would never come. If the job finishes or is deleted while
+// the call waits, the call returns an error instead of blocking.
+func (sm *SimulationManagerImpl) control(id string, required SimulationStatus,
+	channels func(job *SimulationJob) (signal chan struct{}, ack chan struct{})) error {
 	sm.mu.Lock()
 	job, exists := sm.jobs[id]
 	sm.mu.Unlock()
@@ -84,23 +78,37 @@ func (sm *SimulationManagerImpl) ResumeSimulation(id string) error {
 	if !exists {
 		return fmt.Errorf("simulation %s not found", id)
 	}
-	status := job.GetStatus()
-	if status.Status == StatusRunning {
-		return fmt.Errorf("simulation %s is already running", id)
-	}
 
-	select {
-	case job.ResumeChan <- struct{}{}:
-		select {
-		case <-job.ResumeAckChan:
-		case <-job.done:
-			return fmt.Errorf("simulation %s was deleted", id)
+	job.controlMu.Lock()
+	defer job.controlMu.Unlock()
+
+	if status := job.GetStatus().Status; status != required {
+		switch status {
+		case StatusPaused:
+			return fmt.Errorf("simulation %s is already paused", id)
+		case StatusRunning:
+			return fmt.Errorf("simulation %s is already running", id)
+		default:
+			return fmt.Errorf("simulation %s is %s", id, status)
 		}
-	default:
-		return fmt.Errorf("resume signal already sent for simulation %s", id)
 	}
 
-	return nil
+	signal, ack := channels(job)
+	select {
+	case signal <- struct{}{}:
+	case <-job.finished:
+		return fmt.Errorf("simulation %s is %s", id, job.GetStatus().Status)
+	case <-job.done:
+		return fmt.Errorf("simulation %s was deleted", id)
+	}
+	select {
+	case <-ack:
+		return nil
+	case <-job.finished:
+		return fmt.Errorf("simulation %s is %s", id, job.GetStatus().Status)
+	case <-job.done:
+		return fmt.Errorf("simulation %s was deleted", id)
+	}
 }
 
 func (sm *SimulationManagerImpl) GetSimulationStatus(id string) (SimulationJobStatus, error) {
@@ -189,6 +197,9 @@ func (sm *SimulationManagerImpl) generateSimulationID() (string, error) {
 }
 
 func (sm *SimulationManagerImpl) runSimulation(job *SimulationJob) {
+	// Registered first, so it runs last: the final status is set before
+	// waiting control calls are released.
+	defer close(job.finished)
 	defer func() {
 		if r := recover(); r != nil {
 			err := fmt.Errorf("simulation panicked: %v", r)

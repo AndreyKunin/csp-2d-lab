@@ -145,3 +145,41 @@ func TestManagerConcurrentControl(t *testing.T) {
 		}
 	}
 }
+
+// UT-GA-MGR-09: two simultaneous pause requests (or two simultaneous resume
+// requests) on the same job both return: one succeeds, the other is rejected.
+func TestManagerConcurrentSameControlDoesNotHang(t *testing.T) {
+	m := ga.NewSimulationManager()
+	for _, action := range []string{"pause", "resume"} {
+		t.Run(action, func(t *testing.T) {
+			for i := 0; i < 200; i++ {
+				st, err := m.StartSimulation(ga.NewSimulation(params(6, 2, 100000000, 1000000)), &fakes.Problem{InputsSize: 3})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if action == "resume" {
+					if err := m.PauseSimulation(st.ID); err != nil {
+						t.Fatal(err)
+					}
+				}
+				call := m.PauseSimulation
+				if action == "resume" {
+					call = m.ResumeSimulation
+				}
+				var wg sync.WaitGroup
+				results := make([]error, 2)
+				testutil.Within(t, 2*time.Second, fmt.Sprintf("iteration %d: two concurrent %s calls", i, action), func() {
+					for k := range results {
+						wg.Add(1)
+						go func(k int) { defer wg.Done(); results[k] = call(st.ID) }(k)
+					}
+					wg.Wait()
+				})
+				if (results[0] == nil) == (results[1] == nil) {
+					t.Fatalf("iteration %d: want exactly one successful %s, got %v and %v", i, action, results[0], results[1])
+				}
+				_, _ = m.DeleteSimulation(st.ID)
+			}
+		})
+	}
+}

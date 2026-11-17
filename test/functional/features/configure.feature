@@ -142,7 +142,7 @@ Feature: Runtime reconfiguration
     Then the response status is 400
     And the job status is "running"
 
-  @FT-CFG-09 @pending
+  @FT-CFG-09
   Scenario: Configuring a completed job never hangs
     Given a running simulation for fixture "D13-mixed-20" with maxEpochsCount 5
     And I wait for job completion within 30 seconds

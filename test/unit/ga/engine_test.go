@@ -325,7 +325,6 @@ func TestManagerPauseConfigureResume(t *testing.T) {
 
 // UT-GA-MGR-04: control calls on a completed job return promptly.
 func TestManagerCompletedJobDoesNotHang(t *testing.T) {
-	testutil.Pending(t, "pause/resume on a completed job wait forever for an acknowledgement")
 	m := ga.NewSimulationManager()
 	st, _ := m.StartSimulation(ga.NewSimulation(params(6, 2, 2, 1000)), &fakes.Problem{InputsSize: 3})
 	waitStatus(t, m, st.ID, ga.StatusCompleted)

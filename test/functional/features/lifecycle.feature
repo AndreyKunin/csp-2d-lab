@@ -90,7 +90,7 @@ Feature: Simulation lifecycle
       | delete    |
       | configure |
 
-  @FT-LC-12 @pending
+  @FT-LC-12
   Scenario: Pausing a completed simulation never hangs
     Given a running simulation for fixture "D13-mixed-20" with maxEpochsCount 5
     And I wait for job completion within 30 seconds
@@ -99,7 +99,7 @@ Feature: Simulation lifecycle
     And the response status is not successful
     And the server is healthy
 
-  @FT-LC-13 @pending
+  @FT-LC-13
   Scenario: Resuming a completed simulation never hangs
     Given a running simulation for fixture "D13-mixed-20" with maxEpochsCount 5
     And I wait for job completion within 30 seconds
@@ -118,7 +118,7 @@ Feature: Simulation lifecycle
     When I wait for job completion within 120 seconds
     Then the job status is "completed"
 
-  @FT-LC-15 @pending
+  @FT-LC-15
   Scenario: Control calls on a failed simulation never hang
     Given a running simulation for fixture "D10-too-big"
     And I wait for job completion within 20 seconds

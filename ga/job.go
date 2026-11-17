@@ -46,6 +46,13 @@ type SimulationJob struct {
 	done       chan struct{}
 	cancelOnce sync.Once
 
+	// finished is closed when the job's goroutine has exited (completed,
+	// failed, panicked or cancelled).
+	finished chan struct{}
+
+	// controlMu serialises pause/resume calls on this job.
+	controlMu sync.Mutex
+
 	problem problem.Problem
 
 	mu sync.RWMutex
@@ -87,7 +94,8 @@ func NewSimulationJob(id string, simulation *Simulation, problem problem.Problem
 		ResumeChan:    make(chan struct{}, 1),
 		ResumeAckChan: make(chan struct{}, 1),
 
-		done: make(chan struct{}),
+		done:     make(chan struct{}),
+		finished: make(chan struct{}),
 
 		problem: problem,
 	}
