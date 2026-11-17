@@ -44,9 +44,9 @@ type Arena struct {
 	// is kept. These are fields, not locals: a local buffer whose size is not a
 	// compile-time constant is heap-allocated on every call even when escape
 	// analysis reports that it does not escape.
-	trialPostfix     []int    // a critical-flip trial being decoded
-	candidatePostfix []int    // the candidate child of a mutation step
-	pmxOffspring     [2][]int // the two PMX children of one attempt
+	trialPostfix       []int    // a critical-flip trial being decoded
+	candidatePostfix   []int    // the candidate child of a mutation step
+	crossoverOffspring [2][]int // the two children of one crossover attempt
 	// trialInts holds the sheets re-packed by eliminate-and-repair (bump
 	// allocated, rewound for every reinsertion order). It grows when an order
 	// needs more; slices into a replaced buffer stay valid.
@@ -58,15 +58,18 @@ type Arena struct {
 
 	// Working buffers of the hot paths (MEM-04). Each is used by one function
 	// and is valid until that function is called again.
-	decodeStack   []MeteredNode       // decodeForest: operand stack
-	decodeSheets  []MeteredNode       // decodeForest: the returned sheets
-	baseForest    []MeteredNode       // mutateEliminateAndRepair: sheets kept
-	leafItems     []int               // mutateEliminateAndRepair: the removed sheet's parts
-	orders        [][]int             // buildReinsertionOrders: the 4 orders
-	pmxOrders     [2][]int            // pmxWithPoints: leaf orders
-	pmxMapping    [2][]int            // pmxWithPoints: id -> id, -1 = none
-	rankStack     []Metrics           // rankCriticalOperators: operand stack
-	rankCandidate []OperatorCandidate // rankCriticalOperators: the result
+	decodeStack      []MeteredNode       // decodeForest: operand stack
+	decodeSheets     []MeteredNode       // decodeForest: the returned sheets
+	baseForest       []MeteredNode       // mutateEliminateAndRepair: sheets kept
+	leafItems        []int               // mutateEliminateAndRepair: the removed sheet's parts
+	orders           [][]int             // buildReinsertionOrders: the 4 orders
+	crossoverLeaves  []int               // pickDonorSubtree: leaf count per pending subtree
+	crossoverEnds    []int               // pickDonorSubtree: candidate subtree ends
+	crossoverRemoved []bool              // removeLeaves: part id -> removed (cleared before return)
+	crossoverPresent []bool              // removeLeaves: pending subtree is non-empty
+	crossoverRest    []int               // removeLeaves: the result
+	rankStack        []Metrics           // rankCriticalOperators: operand stack
+	rankCandidate    []OperatorCandidate // rankCriticalOperators: the result
 
 	// Tier-2: double-buffered generational + elite arenas.
 	currentGen *PostfixArena
@@ -126,7 +129,7 @@ func NewArena(postfixLen int, populationSize int, eliteCount int) *Arena {
 		reinsertionPostfix: make([]int, 0, postfixLen),
 		trialPostfix:       make([]int, 0, postfixLen),
 		candidatePostfix:   make([]int, 0, postfixLen),
-		pmxOffspring:       [2][]int{make([]int, 0, postfixLen), make([]int, 0, postfixLen)},
+		crossoverOffspring: [2][]int{make([]int, 0, postfixLen), make([]int, 0, postfixLen)},
 		trialInts:          make([]int, 2*postfixLen),
 		reinsertionFresh:   make([]bool, 0, postfixLen),
 		decodeStack:        make([]MeteredNode, 0, postfixLen/2+1),
@@ -134,8 +137,11 @@ func NewArena(postfixLen int, populationSize int, eliteCount int) *Arena {
 		baseForest:         make([]MeteredNode, 0, postfixLen/2+1),
 		leafItems:          make([]int, 0, postfixLen/2+1),
 		orders:             [][]int{make([]int, 0, postfixLen/2+1), make([]int, 0, postfixLen/2+1), make([]int, 0, postfixLen/2+1), make([]int, 0, postfixLen/2+1)},
-		pmxOrders:          [2][]int{make([]int, 0, postfixLen/2+1), make([]int, 0, postfixLen/2+1)},
-		pmxMapping:         [2][]int{noMapping(postfixLen/2 + 1), noMapping(postfixLen/2 + 1)},
+		crossoverLeaves:    make([]int, 0, postfixLen/2+1),
+		crossoverEnds:      make([]int, 0, postfixLen/2),
+		crossoverRemoved:   make([]bool, postfixLen/2+1),
+		crossoverPresent:   make([]bool, 0, postfixLen/2+1),
+		crossoverRest:      make([]int, 0, postfixLen),
 		rankStack:          make([]Metrics, 0, postfixLen/2+1),
 		rankCandidate:      make([]OperatorCandidate, 0, postfixLen/2+1),
 		numLabelScratch:    make([]int32, 0, postfixLen),
@@ -148,15 +154,6 @@ func NewArena(postfixLen int, populationSize int, eliteCount int) *Arena {
 	}
 }
 
-// noMapping returns n mapping entries, all -1 (no mapping).
-func noMapping(n int) []int {
-	m := make([]int, n)
-	for i := range m {
-		m[i] = -1
-	}
-	return m
-}
-
 func (a *Arena) GetForestBuffer() []MeteredNode      { return a.forestBuffer[:a.postfixLen] }
 func (a *Arena) GetForestSliceBuffer() []int         { return a.forestSliceBuffer[:0] }
 func (a *Arena) GetReinsertionForest() []MeteredNode { return a.reinsertionForest[:0] }
@@ -164,8 +161,10 @@ func (a *Arena) GetReinsertionPostfix() []int        { return a.reinsertionPostf
 func (a *Arena) GetTrialPostfix() []int              { return a.trialPostfix[:0] }
 func (a *Arena) GetCandidatePostfix() []int          { return a.candidatePostfix[:0] }
 
-// GetPMXOffspring returns the two empty PMX child buffers.
-func (a *Arena) GetPMXOffspring() ([]int, []int) { return a.pmxOffspring[0][:0], a.pmxOffspring[1][:0] }
+// GetCrossoverOffspring returns the two empty crossover child buffers.
+func (a *Arena) GetCrossoverOffspring() ([]int, []int) {
+	return a.crossoverOffspring[0][:0], a.crossoverOffspring[1][:0]
+}
 
 // GetReinsertionFresh returns the empty freshness flags of the reinsertion forest.
 func (a *Arena) GetReinsertionFresh() []bool { return a.reinsertionFresh[:0] }

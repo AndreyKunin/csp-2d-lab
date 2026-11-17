@@ -92,19 +92,6 @@ func validatePostfix(p []int, n int) error {
 	return nil
 }
 
-// operatorSkeleton returns the postfix with every leaf replaced by -1.
-func operatorSkeleton(p []int) []int {
-	s := make([]int, len(p))
-	for i, v := range p {
-		if v >= 0 {
-			s[i] = -1
-		} else {
-			s[i] = v
-		}
-	}
-	return s
-}
-
 // leafOrder returns the leaves of a postfix in order.
 func leafOrder(p []int) []int {
 	var out []int

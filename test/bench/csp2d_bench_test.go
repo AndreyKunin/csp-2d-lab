@@ -1,6 +1,6 @@
 //go:build testhooks
 
-// Benchmarks for the csp2d hot paths (decoding, PMX, random genotypes, the
+// Benchmarks for the csp2d hot paths (decoding, crossover, random genotypes, the
 // protection lookup). Build with -tags testhooks:
 //
 //	go test -tags testhooks -run=^$ -bench=. -benchmem ./test/bench/
@@ -61,8 +61,8 @@ func BenchmarkGetForest(b *testing.B) {
 	}
 }
 
-// BM-02: PMX crossover.
-func BenchmarkPMX(b *testing.B) {
+// BM-02: subtree crossover (both children of one attempt).
+func BenchmarkCrossover(b *testing.B) {
 	for _, n := range sizes {
 		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
 			p, rnd := benchProblem(b, n, 64, 4)
@@ -71,7 +71,7 @@ func BenchmarkPMX(b *testing.B) {
 			pa, pc := csp2d.AsIndividualForTest(a), csp2d.AsIndividualForTest(c)
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				if _, _, _, _, err := p.PMXForTest(pa, pc, rnd); err != nil {
+				if _, _, err := p.SubtreeCrossoverForTest(pa, pc, rnd); err != nil {
 					b.Fatal(err)
 				}
 				if i%500 == 499 {

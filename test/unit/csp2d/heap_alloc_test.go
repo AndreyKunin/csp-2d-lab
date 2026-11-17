@@ -26,15 +26,16 @@ func TestDecodeTrialAllocatesNothing(t *testing.T) {
 	}
 }
 
-// UT-ARN-23: PMX allocates only the two child individuals.
-func TestPMXAllocatesOnlyChildren(t *testing.T) {
+// UT-ARN-23: a crossover attempt allocates nothing: the children are built in
+// the crossover scratch.
+func TestCrossoverAttemptAllocatesNothing(t *testing.T) {
 	const n = 60
 	rnd := rand.New(rand.NewSource(52))
 	p := newProblem(t, distinctParts(n, rnd), sheet100, 0, 16, 2)
 	a := csp2d.NewIndividualForTest(randomPostfix(rnd, n))
 	b := csp2d.NewIndividualForTest(randomPostfix(rnd, n))
-	if allocs := testing.AllocsPerRun(50, func() { _, _, _ = p.PMXWithPointsForTest(a, b, 5, 40) }); allocs > 2 {
-		t.Fatalf("PMX allocates %.0f times per call, want at most 2 (the children)", allocs)
+	if allocs := testing.AllocsPerRun(50, func() { _, _, _ = p.SubtreeCrossoverChildrenForTest(a, b, rnd) }); allocs != 0 {
+		t.Fatalf("a crossover attempt allocates %.0f times, want 0", allocs)
 	}
 }
 
@@ -103,11 +104,12 @@ func TestMutationHeapPerIndividual(t *testing.T) {
 	}
 }
 
-// UT-ARN-27: rejected PMX attempts allocate nothing: with identical protected
-// parents all 128 attempts per pair are rejected, and Crossover's allocations
-// do not grow with them.
+// UT-ARN-27: rejected crossover attempts allocate nothing: with identical
+// protected parents of 2 parts (each child equals the other parent) all 128
+// attempts per pair are rejected, and Crossover's allocations do not grow with
+// them.
 func TestCrossoverRejectedAttemptsAllocateNothing(t *testing.T) {
-	const n = 10
+	const n = 2
 	rnd := rand.New(rand.NewSource(55))
 	p := newProblem(t, distinctParts(n, rnd), sheet100, 0, 16, 2)
 	elite := randomPostfix(rnd, n)

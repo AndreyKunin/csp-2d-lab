@@ -50,15 +50,15 @@ func TestRandomIndividualRejectedTakesNoArena(t *testing.T) {
 }
 
 // UT-ARN-13: Crossover takes arena space only for the offspring it returns;
-// PMX children rejected as protected take none.
+// children rejected as protected take none.
 func TestCrossoverRejectedTakesNoArena(t *testing.T) {
-	const n = 10
+	const n = 2 // with 2 parts each child equals the other parent
 	rnd := rand.New(rand.NewSource(12))
 	p := newProblem(t, distinctParts(n, rnd), sheet100, 0, 16, 2)
 	elite := randomPostfix(rnd, n)
 	p.Protect([]problem.Individual{csp2d.NewIndividualForTest(elite)})
 	before := p.ArenaForTest().GenDemandForTest()
-	// Identical protected parents: every PMX child is the protected genotype,
+	// Identical protected parents: every child is the protected genotype,
 	// so all retries are rejected and two random individuals are returned.
 	offspring, failures, err := p.Crossover(individuals(elite, copyInts(elite)), rnd)
 	if err != nil || failures != 2 || len(offspring) != 2 {

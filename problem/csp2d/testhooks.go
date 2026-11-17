@@ -132,22 +132,34 @@ func (p *Csp2dProblemImpl) IsProtectedForTest(postfix []int) bool   { return p.i
 
 // ---- Crossover -------------------------------------------------------------
 
-// PMXForTest and PMXWithPointsForTest wrap the children in individuals whose
-// postfixes live in the PMX scratch: valid until the next PMX call.
-func (p *Csp2dProblemImpl) PMXForTest(parent1, parent2 *Csp2dIndividualImpl, rnd *rand.Rand) (*Csp2dIndividualImpl, *Csp2dIndividualImpl, int, int, error) {
-	c1, c2, left, right, err := p.pmx(parent1, parent2, rnd)
-	if err != nil {
-		return nil, nil, left, right, err
-	}
-	return &Csp2dIndividualImpl{postfix: c1}, &Csp2dIndividualImpl{postfix: c2}, left, right, nil
-}
-
-func (p *Csp2dProblemImpl) PMXWithPointsForTest(parent1, parent2 *Csp2dIndividualImpl, left, right int) (*Csp2dIndividualImpl, *Csp2dIndividualImpl, error) {
-	c1, c2, err := p.pmxWithPoints(parent1, parent2, left, right)
+// SubtreeCrossoverForTest wraps the children in individuals whose postfixes
+// live in the crossover scratch: valid until the next crossover.
+func (p *Csp2dProblemImpl) SubtreeCrossoverForTest(parent1, parent2 *Csp2dIndividualImpl, rnd *rand.Rand) (*Csp2dIndividualImpl, *Csp2dIndividualImpl, error) {
+	c1, c2, err := p.subtreeCrossover(parent1, parent2, rnd)
 	if err != nil {
 		return nil, nil, err
 	}
 	return &Csp2dIndividualImpl{postfix: c1}, &Csp2dIndividualImpl{postfix: c2}, nil
+}
+
+// SubtreeCrossoverChildrenForTest returns the scratch-backed children as they
+// are (no wrapping, so it allocates nothing itself).
+func (p *Csp2dProblemImpl) SubtreeCrossoverChildrenForTest(parent1, parent2 *Csp2dIndividualImpl, rnd *rand.Rand) ([]int, []int, error) {
+	return p.subtreeCrossover(parent1, parent2, rnd)
+}
+
+// PickDonorSubtreeForTest returns the span [start, end] of the picked subtree.
+func (p *Csp2dProblemImpl) PickDonorSubtreeForTest(postfix []int, rnd *rand.Rand) (int, int) {
+	return p.pickDonorSubtree(postfix, rnd)
+}
+
+// RemoveLeavesForTest returns a copy of the scratch-backed result.
+func (p *Csp2dProblemImpl) RemoveLeavesForTest(postfix, segment []int) []int {
+	return append([]int{}, p.removeLeaves(postfix, segment)...)
+}
+
+func GraftAtForTest(rest, segment []int, k, op int) []int {
+	return graftAt(nil, rest, segment, k, op)
 }
 
 // ---- Mutation operators ----------------------------------------------------

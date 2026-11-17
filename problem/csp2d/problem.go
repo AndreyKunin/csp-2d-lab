@@ -551,7 +551,7 @@ func (p *Csp2dProblemImpl) Crossover(crossoverSet []*problem.Individual, rnd *ra
 		parent2 := (*crossoverSet[i+1]).(*Csp2dIndividualImpl)
 		offspringProduced := false
 		for j := 0; j < MaxIndividualCreationRetries; j++ {
-			var postfix1, postfix2, _, _, err = p.pmx(parent1, parent2, rnd)
+			var postfix1, postfix2, err = p.subtreeCrossover(parent1, parent2, rnd)
 			if err != nil {
 				return nil, failures, err
 			}
@@ -561,7 +561,7 @@ func (p *Csp2dProblemImpl) Crossover(crossoverSet []*problem.Individual, rnd *ra
 			if p.isProtected(postfix2) {
 				continue
 			}
-			// Accepted: copy both children out of the PMX scratch (MEM-02);
+			// Accepted: copy both children out of the crossover scratch (MEM-02);
 			// rejected attempts allocate nothing (MEM-04).
 			var o1 problem.Individual = newIndividual(p.arena.GenAlloc(postfix1))
 			var o2 problem.Individual = newIndividual(p.arena.GenAlloc(postfix2))
@@ -596,101 +596,147 @@ func (p *Csp2dProblemImpl) Crossover(crossoverSet []*problem.Individual, rnd *ra
 	return offspringSet, failures, nil
 }
 
-func (p *Csp2dProblemImpl) pmx(parent1 *Csp2dIndividualImpl, parent2 *Csp2dIndividualImpl, rnd *rand.Rand) ([]int, []int, int, int, error) {
-	var leafsSize = len(parent1.postfix)/2 + 1
-	// Select crossover points
-	var pointLeft = rnd.Intn(leafsSize)
-	var pointRight = pointLeft
-	for {
-		pointRight = rnd.Intn(leafsSize)
-		if pointRight != pointLeft {
-			break
-		}
+// subtreeCrossover recombines two parents by subtree crossover (GA-01): child 1
+// is parent 1 with a subtree of parent 2 grafted in (graftSubtree), child 2 the
+// same with the roles swapped. A subtree of a slicing tree is a building block
+// (its parts packed with their shape and operators) and is a contiguous segment
+// of the postfix, so no tree is built: each child costs O(L).
+//
+// It returns the children's postfixes, which live in the arena's crossover
+// scratch and are valid only until the next crossover: a caller that keeps a
+// child copies it into the generation arena and wraps it in an individual
+// (Crossover does so after the protection check).
+func (p *Csp2dProblemImpl) subtreeCrossover(parent1, parent2 *Csp2dIndividualImpl, rnd *rand.Rand) ([]int, []int, error) {
+	if len(parent1.postfix) != len(parent2.postfix) {
+		return nil, nil, fmt.Errorf("crossover of postfixes of different lengths %d and %d", len(parent1.postfix), len(parent2.postfix))
 	}
-	if pointLeft > pointRight {
-		pointLeft, pointRight = pointRight, pointLeft
-	}
-	offspring1, offspring2, err := p.pmxWithPoints(parent1, parent2, pointLeft, pointRight)
-	return offspring1, offspring2, pointLeft, pointRight, err
+	child1, child2 := p.arena.GetCrossoverOffspring()
+	child1 = p.graftSubtree(parent1.postfix, parent2.postfix, rnd, child1)
+	child2 = p.graftSubtree(parent2.postfix, parent1.postfix, rnd, child2)
+	return child1, child2, nil
 }
 
-// pmxWithPoints applies PMX to the leaf orders of both parents using the
-// inclusive leaf-index segment [pointLeft, pointRight] and writes the result
-// back into each parent's own operator skeleton.
+// cloneRetries bounds how often graftSubtree re-picks the graft point and
+// operator when the child equals the recipient.
+const cloneRetries = 4
+
+// graftSubtree appends to dst a child of recipient that carries a subtree of
+// donor:
+//  1. pick a donor subtree with 2 .. max(2, n/2) leaves (n = part count);
+//  2. remove its parts from recipient, collapsing each operator left with one
+//     operand (removeLeaves);
+//  3. join it to a random subtree of the rest with a random operator (graftAt).
 //
-// It returns the children's postfixes, which live in the arena's PMX scratch
-// and are valid only until the next PMX: a caller that keeps a child copies it
-// into the generation arena and wraps it in an individual (Crossover does so
-// after the protection check).
-func (p *Csp2dProblemImpl) pmxWithPoints(parent1 *Csp2dIndividualImpl, parent2 *Csp2dIndividualImpl, pointLeft int, pointRight int) ([]int, []int, error) {
-	var postfix1 = parent1.postfix
-	var postfix2 = parent2.postfix
-	var treeSize = len(postfix1)
-	var leafsSize = treeSize/2 + 1
-	// Order leaves in the postfix (scratch buffers, MEM-04)
-	var order1 = p.arena.pmxOrders[0][:0]
-	var order2 = p.arena.pmxOrders[1][:0]
-	for i := 0; i < treeSize; i++ {
-		if postfix1[i] >= 0 {
-			order1 = append(order1, postfix1[i])
+// If the child equals recipient, step 3 is repeated, up to cloneRetries times.
+// A postfix with one part is copied.
+func (p *Csp2dProblemImpl) graftSubtree(recipient, donor []int, rnd *rand.Rand, dst []int) []int {
+	if len(donor) < 3 {
+		return append(dst, recipient...)
+	}
+	start, end := p.pickDonorSubtree(donor, rnd)
+	segment := donor[start : end+1]
+	rest := p.removeLeaves(recipient, segment)
+	if len(rest) == 0 { // the subtree holds every part
+		return append(dst, segment...)
+	}
+	base := len(dst)
+	for attempt := 1; ; attempt++ {
+		op := NumS
+		if rnd.Intn(2) == 1 {
+			op = NumL
 		}
-		if postfix2[i] >= 0 {
-			order2 = append(order2, postfix2[i])
+		dst = graftAt(dst[:base], rest, segment, rnd.Intn(len(rest)), op)
+		if attempt == cloneRetries || !samePostfix(dst[base:], recipient) {
+			return dst
 		}
 	}
-	if pointLeft < 0 || pointRight >= leafsSize || pointLeft > pointRight {
-		return nil, nil, fmt.Errorf("invalid PMX segment [%d, %d] for %d leaves", pointLeft, pointRight, leafsSize)
+}
+
+// pickDonorSubtree returns the span [start, end] of a random subtree of postfix
+// with 2 .. max(2, n/2) leaves. Every tree with 2 or more leaves has one: an
+// operator over two leaves.
+func (p *Csp2dProblemImpl) pickDonorSubtree(postfix []int, rnd *rand.Rand) (start, end int) {
+	maxLeaves := max(2, (len(postfix)/2+1)/2)
+	leaves := p.arena.crossoverLeaves[:0] // leaf count of each pending subtree
+	ends := p.arena.crossoverEnds[:0]     // operator positions that qualify
+	for i, id := range postfix {
+		if id >= 0 {
+			leaves = append(leaves, 1)
+			continue
+		}
+		count := leaves[len(leaves)-2] + leaves[len(leaves)-1]
+		leaves = append(leaves[:len(leaves)-2], count)
+		if count <= maxLeaves {
+			ends = append(ends, i)
+		}
 	}
-	// The mappings are arrays indexed by part id (ids are 0..leafsSize-1);
-	// -1 means "no mapping". They are cleared again before returning.
-	if len(p.arena.pmxMapping[0]) < leafsSize {
-		p.arena.pmxMapping = [2][]int{noMapping(leafsSize), noMapping(leafsSize)}
+	p.arena.crossoverLeaves, p.arena.crossoverEnds = leaves, ends
+	end = ends[rnd.Intn(len(ends))]
+	return p.subtreeSpan(postfix, end), end
+}
+
+// removeLeaves returns postfix without the parts of segment. An operator that
+// loses one operand is dropped: the other operand, already written as one
+// contiguous run, takes its place. One that loses both is dropped too.
+//
+// The result lives in the arena's crossover scratch and is valid until the
+// next call.
+func (p *Csp2dProblemImpl) removeLeaves(postfix, segment []int) []int {
+	removed := p.arena.crossoverRemoved
+	if need := len(postfix)/2 + 1; len(removed) < need {
+		removed = make([]bool, need)
+		p.arena.crossoverRemoved = removed
 	}
-	var mapping1 = p.arena.pmxMapping[0]
-	var mapping2 = p.arena.pmxMapping[1]
-	for i := pointLeft; i <= pointRight; i++ {
-		// Swap middle segment
-		order1[i], order2[i] = order2[i], order1[i]
-		// Determine mapping relationship
-		mapping1[order1[i]] = order2[i]
-		mapping2[order2[i]] = order1[i]
+	for _, id := range segment {
+		if id >= 0 {
+			removed[id] = true
+		}
 	}
-	// Legalize offspring (rearrange to remove duplicates)
-	for i := 0; i < leafsSize; i++ {
-		if i < pointLeft || i > pointRight {
-			value1 := order1[i]
-			value2 := order2[i]
-			for mapping1[value1] >= 0 {
-				value1 = mapping1[value1]
+	out := p.arena.crossoverRest[:0]
+	present := p.arena.crossoverPresent[:0] // one flag per pending subtree
+	for _, id := range postfix {
+		if id >= 0 {
+			keep := !removed[id]
+			if keep {
+				out = append(out, id)
 			}
-			for mapping2[value2] >= 0 {
-				value2 = mapping2[value2]
-			}
-			order1[i] = value1
-			order2[i] = value2
+			present = append(present, keep)
+			continue
+		}
+		left, right := present[len(present)-2], present[len(present)-1]
+		if left && right {
+			out = append(out, id)
+		}
+		present = append(present[:len(present)-2], left || right)
+	}
+	for _, id := range segment {
+		if id >= 0 {
+			removed[id] = false
 		}
 	}
-	for i := pointLeft; i <= pointRight; i++ {
-		mapping1[order1[i]] = -1
-		mapping2[order2[i]] = -1
+	p.arena.crossoverRest, p.arena.crossoverPresent = out, present
+	return out
+}
+
+// graftAt appends to dst the postfix rest with segment joined, by operator op,
+// to the subtree of rest that ends at position k: rest[:k+1] segment op
+// rest[k+1:]. Every token ends a subtree, so every k in [0, len(rest)) gives a
+// valid postfix.
+func graftAt(dst, rest, segment []int, k, op int) []int {
+	dst = append(dst, rest[:k+1]...)
+	dst = append(dst, segment...)
+	dst = append(dst, op)
+	return append(dst, rest[k+1:]...)
+}
+
+func samePostfix(a, b []int) bool {
+	if len(a) != len(b) {
+		return false
 	}
-	// Replace leaves with offspring
-	offspringPostfix1, offspringPostfix2 := p.arena.GetPMXOffspring()
-	j1 := 0
-	j2 := 0
-	for i := 0; i < treeSize; i++ {
-		if postfix1[i] >= 0 {
-			offspringPostfix1 = append(offspringPostfix1, order1[j1])
-			j1++
-		} else {
-			offspringPostfix1 = append(offspringPostfix1, postfix1[i])
-		}
-		if postfix2[i] >= 0 {
-			offspringPostfix2 = append(offspringPostfix2, order2[j2])
-			j2++
-		} else {
-			offspringPostfix2 = append(offspringPostfix2, postfix2[i])
+	for i := range a {
+		if a[i] != b[i] {
+			return false
 		}
 	}
-	return offspringPostfix1, offspringPostfix2, nil
+	return true
 }
