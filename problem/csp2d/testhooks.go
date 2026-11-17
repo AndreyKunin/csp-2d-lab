@@ -236,3 +236,14 @@ func (individual *Csp2dIndividualImpl) SetFitnessForTest(vector [3]float64, valu
 // GenDemandForTest returns the ints requested from the next-generation arena
 // since the last rotation (served plus overflowed).
 func (a *Arena) GenDemandForTest() int { return a.nextGen.Demand() }
+
+// EliteArenaForTest returns the elite arena that holds the current elites.
+func (a *Arena) EliteArenaForTest() *PostfixArena { return a.eliteArena }
+
+// BaseForTest identifies the arena's buffer (nil when it is empty).
+func (a *PostfixArena) BaseForTest() *int {
+	if len(a.buf) == 0 {
+		return nil
+	}
+	return &a.buf[0]
+}

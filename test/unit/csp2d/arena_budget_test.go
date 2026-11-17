@@ -76,7 +76,10 @@ func TestArenaReleaseReturnsBudget(t *testing.T) {
 	ar := csp2d.NewArena(50, 100, 5)
 	_ = ar.GenAllocN(100000) // overflow, so the arena grows
 	ar.RotateGenerations()
-	ar.RebuildEliteArena(5) // replaces the elite arena, as every epoch does
+	// Both promotion paths: reuse the standby buffer, and replace one that is
+	// still referenced.
+	ar.NextEliteArena(5, func(*csp2d.PostfixArena) bool { return false })
+	ar.NextEliteArena(5, func(*csp2d.PostfixArena) bool { return true })
 	if csp2d.ArenaBytesReserved() == before {
 		t.Fatal("creating an arena reserved nothing")
 	}

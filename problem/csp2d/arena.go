@@ -12,11 +12,13 @@ import "csp2d/util"
 //     PARENTS being read this epoch by crossover/mutation.
 //   - nextGen:    holds postfixes being written this epoch (new offspring,
 //     fitness-evaluation forests, mutation children).
-//   - eliteArena: holds postfixes of elite individuals (rebuilt each epoch
-//     from the survivors).
+//   - eliteArena: holds postfixes of elite individuals (re-promoted each
+//     epoch from the survivors). It alternates with eliteStandby, which holds
+//     the previous promotion's copies.
 //
 // At the end of an epoch (RotateGenerations):
-//  1. elites' postfix data is copied into a fresh eliteArena (PromoteElites);
+//  1. elites' postfix data is copied into the reset standby elite buffer,
+//     which becomes eliteArena (PromoteElites);
 //  2. currentGen, whose contents are now dead, is reset — or replaced by a
 //     larger buffer when the epoch's demand outgrew it;
 //  3. currentGen and nextGen are swapped.
@@ -58,6 +60,14 @@ type Arena struct {
 	currentGen *PostfixArena
 	nextGen    *PostfixArena
 	eliteArena *PostfixArena
+	// eliteStandby holds the elites of the previous promotion. Demoted elites
+	// are replaced within the epoch that demotes them, so by the next
+	// promotion nothing references it and it is reset and reused (MEM-03),
+	// unless the caller reports that it is still referenced.
+	eliteStandby *PostfixArena
+	// eliteGuardLogged: the warning about a still-referenced standby buffer
+	// was logged for this job.
+	eliteGuardLogged bool
 
 	// genTarget is the desired generation-arena capacity in ints: the largest
 	// observed per-epoch demand plus margin (the initial estimate before that).
@@ -78,9 +88,10 @@ type Arena struct {
 // grows to the observed demand.
 const initialPerIndividualMultiplier = 4
 
-// eliteMultiplier: an elite needs its postfix plus its forest's postfixes,
-// about 2 postfix lengths.
-const eliteMultiplier = 4
+// eliteMultiplier: an elite needs its postfix (2n-1 ints) plus its forest's
+// postfixes (2n - sheets ints), at most 2 postfix lengths, so the elite arena
+// never overflows.
+const eliteMultiplier = 2
 
 // demandMargin is added to the observed demand when an arena grows (1/4 = 25%).
 const demandMarginDivisor = 4
@@ -111,6 +122,7 @@ func NewArena(postfixLen int, populationSize int, eliteCount int) *Arena {
 		currentGen:         NewPostfixArena("currentGen", genCapacity),
 		nextGen:            NewPostfixArena("nextGen", genCapacity),
 		eliteArena:         NewPostfixArena("elite", eliteCapacity),
+		eliteStandby:       NewPostfixArena("elite", eliteCapacity),
 		genTarget:          genCapacity,
 	}
 }
@@ -192,14 +204,33 @@ func (a *Arena) RotateGenerations() {
 	a.currentGen, a.nextGen = a.nextGen, dead
 }
 
-// RebuildEliteArena replaces the elite arena with a fresh one sized for
-// `eliteCount`. The previous elite arena (and slices into it) become
-// unreachable — callers must have copied any survivors out beforehand.
-func (a *Arena) RebuildEliteArena(eliteCount int) {
-	overflows := a.eliteArena.OverflowCount()
-	a.eliteArena.Release()
-	a.eliteArena = NewPostfixArena("elite", max(eliteCount, 1)*perIndividual(a.postfixLen, eliteMultiplier))
-	a.eliteArena.overflow = overflows // keep the warning throttle across epochs
+// NextEliteArena prepares the elite arena for a promotion of eliteCount
+// elites: the standby buffer, which holds the copies of two promotions ago, is
+// reset and becomes the elite arena; the current one becomes the standby. The
+// current elites' data therefore stays intact while it is copied.
+//
+// inUse reports whether anything still references the standby buffer. If it
+// does (a population that was not fully replaced, BE-01), the buffer is left
+// to the GC with its referents and a fresh one is used. A buffer smaller than
+// eliteCount needs is replaced too, as far as the arena budget allows.
+func (a *Arena) NextEliteArena(eliteCount int, inUse func(*PostfixArena) bool) {
+	want := max(eliteCount, 1) * perIndividual(a.postfixLen, eliteMultiplier)
+	standby := a.eliteStandby
+	referenced := inUse(standby)
+	if referenced && !a.eliteGuardLogged {
+		a.eliteGuardLogged = true
+		util.Warning.Printf("PostfixArena[elite]: the previous elite buffer is still referenced by the population; using a new one (population not fully replaced)")
+	}
+	grow := standby.Capacity() < want && availableArenaInts() > 0
+	if referenced || grow {
+		overflows := standby.OverflowCount()
+		standby.Release()
+		standby = NewPostfixArena("elite", want)
+		standby.overflow = overflows // keep the warning throttle across buffers
+	} else {
+		standby.Reset()
+	}
+	a.eliteStandby, a.eliteArena = a.eliteArena, standby
 }
 
 // Release returns all arena buffers to the process budget. Call it when the
@@ -208,6 +239,7 @@ func (a *Arena) Release() {
 	a.currentGen.Release()
 	a.nextGen.Release()
 	a.eliteArena.Release()
+	a.eliteStandby.Release()
 }
 
 // GetNumLabelScratch returns an empty []int32 with cap >= n. The buffer is

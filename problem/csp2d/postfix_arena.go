@@ -3,6 +3,7 @@ package csp2d
 import (
 	"csp2d/util"
 	"sync/atomic"
+	"unsafe"
 )
 
 // PostfixArena is a bump allocator for []int slices that share a lifetime.
@@ -93,6 +94,18 @@ func (a *PostfixArena) Release() {
 
 func (a *PostfixArena) Stats() (used, capacity int, overflow uint64) {
 	return a.cursor, len(a.buf), atomic.LoadUint64(&a.overflow)
+}
+
+// Contains reports whether s was allocated from this arena's current buffer.
+// (Slices served from the heap on overflow are not.) The Go heap does not move
+// objects, so comparing addresses is sound.
+func (a *PostfixArena) Contains(s []int) bool {
+	if cap(s) == 0 || len(a.buf) == 0 {
+		return false
+	}
+	base := uintptr(unsafe.Pointer(unsafe.SliceData(a.buf)))
+	at := uintptr(unsafe.Pointer(unsafe.SliceData(s)))
+	return at >= base && at < base+uintptr(len(a.buf))*unsafe.Sizeof(a.buf[0])
 }
 
 func (a *PostfixArena) Capacity() int {

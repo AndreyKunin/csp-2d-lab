@@ -478,8 +478,9 @@ func (p *Csp2dProblemImpl) PromoteElites(eliteCount int) {
 	}
 	p.eliteCount = eliteCount
 
-	// Build a fresh elite arena sized to eliteCount and swap it in.
-	p.arena.RebuildEliteArena(eliteCount)
+	// Reuse the elite buffer of two promotions ago, unless an individual of
+	// the population still points into it (MEM-03).
+	p.arena.NextEliteArena(eliteCount, p.populationReferences)
 
 	for i := 0; i < eliteCount; i++ {
 		ind, _ := species[i].(*Csp2dIndividualImpl)
@@ -491,6 +492,26 @@ func (p *Csp2dProblemImpl) PromoteElites(eliteCount int) {
 			ind.meteredForest[k].postfix = p.arena.EliteAlloc(ind.meteredForest[k].postfix)
 		}
 	}
+}
+
+// populationReferences reports whether any individual of the population (its
+// postfix or a cached sheet) points into the given arena.
+func (p *Csp2dProblemImpl) populationReferences(arena *PostfixArena) bool {
+	for _, ind := range *p.population.Species {
+		individual, _ := ind.(*Csp2dIndividualImpl)
+		if individual == nil {
+			continue
+		}
+		if arena.Contains(individual.postfix) {
+			return true
+		}
+		for _, tree := range individual.meteredForest {
+			if arena.Contains(tree.postfix) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // RotateGenerations swaps the generational buffers so the just-written
