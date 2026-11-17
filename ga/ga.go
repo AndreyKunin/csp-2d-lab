@@ -26,7 +26,9 @@ func Simulate(job *SimulationJob) error {
 			EpochNumber:           0,
 		},
 		CurrentWindow: WindowState{
-			Epochs:                  make([]*EpochState, 0, simulation.Parameters.WindowSize),
+			// Epochs starts empty and grows by append (addEpoch) up to windowSize:
+			// its memory follows the epochs run, never the client-supplied size.
+			Epochs:                  nil,
 			AverageFitness:          0,
 			AverageEliteFitness:     0,
 			AverageFitnessDeviation: 0,

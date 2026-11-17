@@ -124,13 +124,17 @@ Feature: Boundary simulation parameters
     Then the job status is "completed"
     And every solution is valid
 
-  # The server pre-allocates the metric window (8 bytes per slot per job), so a
-  # huge windowSize is a client-controlled memory allocation: 10^8 reserves
-  # 800 MB. Runs on its own server.
-  @FT-PAR-13 @pending
-  Scenario: A huge window size is rejected
+  # The metric window takes memory for the epochs a job has run, never for the
+  # client-supplied windowSize (pre-allocating it reserved 800 MB for 10^8).
+  # A long window is legitimate: it also keeps the early stop off. Runs on its
+  # own server.
+  @FT-PAR-13
+  Scenario: A huge window size reserves no memory
     Given a server started with config "fast"
+    And I record the server memory baseline
     And a start request from fixture "D13-mixed-20"
     And the request parameter "windowSize" is 100000000
     When I start the simulation
-    Then the response status is 400
+    Then the response status is 201
+    And the epoch number increases within 10 seconds
+    And the server memory grew by less than 50 MB

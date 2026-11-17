@@ -12,6 +12,7 @@ import (
 	"math"
 	"math/rand"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -223,6 +224,27 @@ func TestWindowShrink(t *testing.T) {
 	w.AddEpochForTest(&ga.EpochState{EpochNumber: 11}, 4)
 	if len(w.Epochs) != 4 {
 		t.Fatalf("window length %d after shrinking to 4", len(w.Epochs))
+	}
+}
+
+// UT-GA-WS-06: the window takes memory for the epochs a job has run, not for
+// the client-supplied windowSize: a 3-epoch job allocates about the same with
+// a window of 10^7 as with a window of 50.
+func TestWindowNotPreallocated(t *testing.T) {
+	heap := func(window int) uint64 {
+		runtime.GC()
+		var m0, m1 runtime.MemStats
+		runtime.ReadMemStats(&m0)
+		if err := simulate(t, params(10, 2, 3, window), &fakes.Problem{InputsSize: 5}); err != nil {
+			t.Fatal(err)
+		}
+		runtime.ReadMemStats(&m1)
+		return m1.TotalAlloc - m0.TotalAlloc
+	}
+	small, huge := heap(50), heap(10_000_000)
+	t.Logf("heap per job: window 50 %d KB, window 10^7 %d KB", small/1024, huge/1024)
+	if huge > small+1<<20 {
+		t.Fatalf("a window of 10^7 costs %d KB more than a window of 50", (huge-small)/1024)
 	}
 }
 
