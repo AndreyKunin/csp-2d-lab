@@ -1,0 +1,18 @@
+# Fast profile for the PR gate: small populations, few epochs.
+# Host and port are overridden by the harness via SERVER_HOST / SERVER_PORT.
+webserver:
+  host: 127.0.0.1
+  port: 8080
+  staticDir: static
+
+defaults:
+  simulationParameters:
+    populationSize:
+      min: 20
+      max: 60
+    eliteCount: 5
+    mutationRate: 0.07
+    minRate: 0.005
+    maxRate: 0.995
+    maxEpochsCount: 200
+    windowSize: 10

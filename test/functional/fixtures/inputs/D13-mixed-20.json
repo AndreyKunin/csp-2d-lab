@@ -1,0 +1,45 @@
+{
+  "sheets": {
+    "width": 244,
+    "length": 122
+  },
+  "parts": [
+    {
+      "label": "1",
+      "width": 60,
+      "length": 40,
+      "count": 4
+    },
+    {
+      "label": "2",
+      "width": 80,
+      "length": 30,
+      "count": 3
+    },
+    {
+      "label": "3",
+      "width": 50,
+      "length": 50,
+      "count": 4
+    },
+    {
+      "label": "4",
+      "width": 100,
+      "length": 20,
+      "count": 3
+    },
+    {
+      "label": "5",
+      "width": 30,
+      "length": 30,
+      "count": 4
+    },
+    {
+      "label": "6",
+      "width": 120,
+      "length": 60,
+      "count": 2
+    }
+  ],
+  "sawWidth": 0.3
+}

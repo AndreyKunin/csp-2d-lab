@@ -1,0 +1,114 @@
+Feature: Starting a simulation
+  Request validation and the start response contract.
+
+  Background:
+    Given the server is running with config "fast"
+
+  @FT-START-01
+  Scenario: A valid request starts a job
+    Given a start request from fixture "D13-mixed-20"
+    When I start the simulation
+    Then the response status is 201
+    And the job id is a 32-character hex string
+    And the response job status is "running"
+    And the response message is "Simulation started"
+    And the response has RFC 3339 timestamps
+
+  @FT-START-02
+  Scenario: Two starts create two different jobs
+    Given a start request from fixture "D13-mixed-20"
+    When I start the simulation
+    And I start the simulation
+    Then the two started jobs have different ids
+
+  @FT-START-03
+  Scenario: Explicit parameters are applied
+    Given a start request from fixture "D13-mixed-20"
+    And the request parameter "eliteCount" is 4
+    And the request parameter "mutationRate" is 0.05
+    And the request parameter "maxEpochsCount" is 77
+    And the request parameter "windowSize" is 7
+    When I start the simulation
+    Then the response status is 201
+    And the reported parameter "eliteCount" is 4
+    And the reported parameter "mutationRate" is 0.05
+    And the reported parameter "maxEpochsCount" is 77
+    And the reported parameter "windowSize" is 7
+
+  # The "fast" profile defaults: elite 5, window 10, 200 epochs, population 20..60.
+  @FT-START-04
+  Scenario: Partial parameters are completed from the defaults
+    Given a start request from fixture "D13-mixed-20"
+    And the request parameter "mutationRate" is 0.03
+    When I start the simulation
+    Then the response status is 201
+    And the reported parameter "mutationRate" is 0.03
+    And the reported parameter "eliteCount" is 5
+    And the reported parameter "windowSize" is 10
+    And the reported parameter "maxEpochsCount" is 200
+    And the reported parameter "populationSize" is 60
+
+  # D13 has n = 20 parts, so n squared = 400.
+  @FT-START-05
+  Scenario Outline: Population size is max(min, min(n squared, max))
+    Given a start request from fixture "D13-mixed-20"
+    And the request parameter "populationSize.min" is <min>
+    And the request parameter "populationSize.max" is <max>
+    When I start the simulation
+    Then the response status is 201
+    And the reported parameter "populationSize" is <expected>
+
+    Examples:
+      | min | max | expected |
+      | 500 | 900 | 500      |
+      | 30  | 900 | 400      |
+      | 30  | 50  | 50       |
+
+  @FT-START-06
+  Scenario: Malformed JSON is rejected
+    Given a start request from fixture "X09-malformed"
+    When I start the simulation
+    Then the response status is 400
+    And the server is healthy
+
+  @FT-START-07 @pending
+  Scenario Outline: Invalid inputs are rejected with 400
+    Given a start request from fixture "<fixture>"
+    When I start the simulation
+    Then the response status is 400
+    And the server is healthy
+
+    Examples:
+      | fixture            |
+      | X01-no-parts       |
+      | X02-zero-count     |
+      | X03-negative-count |
+      | X04-zero-dimension |
+      | X05-negative-width |
+      | X07-negative-kerf  |
+      | X08-zero-sheet     |
+
+  @FT-START-08 @pending
+  Scenario: A non-numeric label is a client error
+    Given a start request from fixture "X06-non-numeric-label"
+    When I start the simulation
+    Then the response status is 400
+
+  # Ten million parts: must be refused quickly without harming the server.
+  # Runs on its own server because the current implementation may exhaust memory.
+  @FT-START-09 @pending
+  Scenario: An oversized part count is refused
+    Given a server started with config "fast"
+    And a start request from fixture "X10-oversized-count"
+    When I start the simulation
+    Then the response arrives within 10 seconds
+    And the response status is one of 400, 413
+    And the server is healthy
+
+  @FT-START-10
+  Scenario: A part larger than the sheet is reported
+    Given a start request from fixture "D10-too-big"
+    When I start the simulation
+    Then the response status is 201
+    When I wait for job completion within 20 seconds
+    Then the job status is "error"

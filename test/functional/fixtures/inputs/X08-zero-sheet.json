@@ -1,0 +1,15 @@
+{
+  "sheets": {
+    "width": 0,
+    "length": 100
+  },
+  "parts": [
+    {
+      "label": "1",
+      "width": 10,
+      "length": 10,
+      "count": 2
+    }
+  ],
+  "sawWidth": 0
+}

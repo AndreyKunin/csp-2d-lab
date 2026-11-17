@@ -58,6 +58,55 @@ docker-run-d:
 .PHONY: docker-build-run
 docker-build-run: docker-build docker-run
 
+# ── Tests ─────────────────────────────────────────────────────────────────────
+# Tests live under test/. Unit tests reach unexported code through the
+# build-tag-gated hook files (ga/testhooks.go, problem/csp2d/testhooks.go).
+# godog flags use pflag syntax: --godog.tags=..., --godog.format=...
+GODOG_PR_TAGS ?= ~@pending && ~@slow && ~@quality && ~@resource
+GODOG_FORMAT  ?= pretty
+COVER_DIR     ?= coverage
+
+.PHONY: test
+test: test-unit test-functional
+
+.PHONY: test-unit
+test-unit:
+	go test -tags testhooks -coverpkg=csp2d/... ./test/unit/... ./test/support/...
+
+.PHONY: test-unit-race
+test-unit-race:
+	CGO_ENABLED=1 go test -tags testhooks -race ./test/unit/... ./test/support/...
+
+.PHONY: test-unit-pending
+test-unit-pending:
+	CSP2D_RUN_PENDING=1 go test -tags testhooks ./test/unit/...
+
+.PHONY: test-functional
+test-functional:
+	go test -count=1 ./test/functional/ -args --godog.tags='$(GODOG_PR_TAGS)' --godog.format=$(GODOG_FORMAT)
+
+.PHONY: test-functional-race
+test-functional-race:
+	go test -count=1 ./test/functional/ -args --server.race --godog.tags='$(GODOG_PR_TAGS)' --godog.format=$(GODOG_FORMAT)
+
+.PHONY: test-nightly
+test-nightly:
+	go test -count=1 -timeout 2h ./test/functional/ -args --godog.tags='~@pending' --godog.format=$(GODOG_FORMAT)
+
+.PHONY: test-pending
+test-pending:
+	-go test -count=1 ./test/functional/ -args --godog.tags='@pending' --godog.format=$(GODOG_FORMAT)
+
+.PHONY: test-functional-cover
+test-functional-cover:
+	rm -rf $(COVER_DIR)/functional && mkdir -p $(COVER_DIR)/functional
+	go test -count=1 ./test/functional/ -args --server.coverdir=$(abspath $(COVER_DIR))/functional --godog.tags='$(GODOG_PR_TAGS)' --godog.format=progress
+	go tool covdata percent -i=$(COVER_DIR)/functional
+
+.PHONY: bench
+bench:
+	go test -tags testhooks -run='^$$' -bench=. -benchmem ./test/bench/...
+
 # ── Cleanup ───────────────────────────────────────────────────────────────────
 .PHONY: clean
 clean:

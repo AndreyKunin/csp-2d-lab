@@ -1,0 +1,213 @@
+//go:build testhooks
+
+// Test hooks: thin exported wrappers around unexported csp2d algorithms and
+// state, so that tests living under test/ (outside this package) can reach
+// them. This file is compiled ONLY with `-tags testhooks`; production builds
+// never contain it. It must hold no logic beyond forwarding and conversion.
+
+package csp2d
+
+import (
+	"csp2d/problem"
+	"math/rand"
+)
+
+// ---- Problem construction --------------------------------------------------
+
+// NewProblemForTest returns the concrete problem type (NewCsp2dProblem returns
+// the problem.Problem interface).
+func NewProblemForTest(inputs []InputDefinition, constraints *Constraints) *Csp2dProblemImpl {
+	return &Csp2dProblemImpl{inputs: inputs, constraints: constraints}
+}
+
+// InitForTest prepares label ranks and the arena exactly as NewPopulation does,
+// without creating a population. Required before calling any algorithm that
+// allocates from the arena or computes protection keys.
+func (p *Csp2dProblemImpl) InitForTest(populationSize, eliteCount int) {
+	p.buildLabelRanks()
+	p.arena = NewArena(len(p.inputs)*2-1, populationSize, eliteCount)
+	if p.protectedGenotype == nil {
+		p.protectedGenotype = make(map[string]struct{})
+	}
+}
+
+func (p *Csp2dProblemImpl) ArenaForTest() *Arena             { return p.arena }
+func (p *Csp2dProblemImpl) ConstraintsForTest() *Constraints { return p.constraints }
+func (p *Csp2dProblemImpl) InputsForTest() []InputDefinition { return p.inputs }
+
+// ---- Individuals -----------------------------------------------------------
+
+func NewIndividualForTest(postfix []int) *Csp2dIndividualImpl {
+	return newIndividual(postfix).(*Csp2dIndividualImpl)
+}
+
+// AsIndividualForTest converts a problem.Individual to the concrete type
+// (returns nil for a nil interface).
+func AsIndividualForTest(ind problem.Individual) *Csp2dIndividualImpl {
+	if ind == nil {
+		return nil
+	}
+	return ind.(*Csp2dIndividualImpl)
+}
+
+func (individual *Csp2dIndividualImpl) PostfixForTest() []int { return individual.postfix }
+func (individual *Csp2dIndividualImpl) FitnessVectorForTest() [3]float64 {
+	return individual.fitnessVector
+}
+func (individual *Csp2dIndividualImpl) FitnessValueForTest() float64 { return individual.fitnessValue }
+func (individual *Csp2dIndividualImpl) ForestForTest() []NodeView {
+	if individual.meteredForest == nil {
+		return nil
+	}
+	return toViews(individual.meteredForest)
+}
+func (individual *Csp2dIndividualImpl) InvalidateCacheForTest() { individual.invalidateCache() }
+
+// ---- Metered nodes ---------------------------------------------------------
+
+// NodeView is an exported mirror of MeteredNode.
+type NodeView struct {
+	Postfix []int
+	Long    float64
+	Short   float64
+}
+
+func toViews(nodes []MeteredNode) []NodeView {
+	views := make([]NodeView, len(nodes))
+	for i, n := range nodes {
+		views[i] = NodeView{Postfix: n.postfix, Long: n.measurements.longSide, Short: n.measurements.shortSide}
+	}
+	return views
+}
+
+func fromViews(views []NodeView) []MeteredNode {
+	nodes := make([]MeteredNode, len(views))
+	for i, v := range views {
+		nodes[i] = MeteredNode{postfix: v.Postfix, measurements: Metrics{longSide: v.Long, shortSide: v.Short}}
+	}
+	return nodes
+}
+
+// ---- Geometry, decoding, fitness ------------------------------------------
+
+func (p *Csp2dProblemImpl) ReduceForTest(op int, long1, short1, long2, short2, gap float64) (long, short float64) {
+	m := p.reduce(op, Metrics{longSide: long1, shortSide: short1}, Metrics{longSide: long2, shortSide: short2}, gap)
+	return m.longSide, m.shortSide
+}
+
+func (p *Csp2dProblemImpl) IsValidMetricsForTest(long, short float64) bool {
+	return p.isValidMetrics(Metrics{longSide: long, shortSide: short}, p.constraints)
+}
+
+func (p *Csp2dProblemImpl) GetForestForTest(individual *Csp2dIndividualImpl) ([]NodeView, error) {
+	forest, err := p.getForest(individual)
+	if err != nil {
+		return nil, err
+	}
+	return toViews(forest), nil
+}
+
+func (p *Csp2dProblemImpl) EvaluateFitnessForTest(individual *Csp2dIndividualImpl) error {
+	return p.evaluateFitness(individual)
+}
+
+func (p *Csp2dProblemImpl) FitnessVectorForTest(forest []NodeView) [3]float64 {
+	return p.getFitnessVector(fromViews(forest))
+}
+
+func (p *Csp2dProblemImpl) FitnessVectorWithReplacementForTest(forest []NodeView, index int, long, short float64) [3]float64 {
+	return p.getFitnessVectorWithReplacement(fromViews(forest), index, Metrics{longSide: long, shortSide: short})
+}
+
+func (p *Csp2dProblemImpl) FitnessValueForTest(individual *Csp2dIndividualImpl) float64 {
+	return p.getFitnessValue(individual, p.constraints)
+}
+
+func (p *Csp2dProblemImpl) ToStringForTest(postfix []int) string { return p.toString(postfix) }
+
+// ---- Identity / protection -------------------------------------------------
+
+func (p *Csp2dProblemImpl) NumLabelKeyForTest(postfix []int) string { return p.toNumLabelKey(postfix) }
+func (p *Csp2dProblemImpl) IsProtectedForTest(postfix []int) bool   { return p.isProtected(postfix) }
+
+// ---- Crossover -------------------------------------------------------------
+
+func (p *Csp2dProblemImpl) PMXForTest(parent1, parent2 *Csp2dIndividualImpl, rnd *rand.Rand) (*Csp2dIndividualImpl, *Csp2dIndividualImpl, int, int, error) {
+	return p.pmx(parent1, parent2, rnd)
+}
+
+func (p *Csp2dProblemImpl) PMXWithPointsForTest(parent1, parent2 *Csp2dIndividualImpl, left, right int) (*Csp2dIndividualImpl, *Csp2dIndividualImpl, error) {
+	return p.pmxWithPoints(parent1, parent2, left, right)
+}
+
+// ---- Mutation operators ----------------------------------------------------
+
+func (p *Csp2dProblemImpl) SubtreeSpanForTest(postfix []int, end int) int {
+	return p.subtreeSpan(postfix, end)
+}
+
+func (p *Csp2dProblemImpl) ChangeOperatorForTest(individual *Csp2dIndividualImpl, rnd *rand.Rand) (int, error) {
+	return p.changeOperator(individual, rnd)
+}
+
+func (p *Csp2dProblemImpl) ReplaceElementsForTest(individual *Csp2dIndividualImpl, rnd *rand.Rand) (int, error) {
+	return p.replaceElements(individual, rnd)
+}
+
+func (p *Csp2dProblemImpl) RankCriticalOperatorsForTest(postfix []int) []OperatorCandidate {
+	return p.rankCriticalOperators(postfix)
+}
+
+func (p *Csp2dProblemImpl) SelectWorstTreeForTest(forest []NodeView) int {
+	return p.selectWorstTree(fromViews(forest))
+}
+
+// InsertItemGreedyForTest runs the in-place insertion on a copy of forest and
+// returns the resulting forest.
+func (p *Csp2dProblemImpl) InsertItemGreedyForTest(forest []NodeView, itemID int) ([]NodeView, bool) {
+	nodes := fromViews(forest)
+	ok := p.insertItemGreedyInPlace(nodes, itemID)
+	return toViews(nodes), ok
+}
+
+// ReinsertItemsForTest returns a copy of the scratch-backed result, so it stays
+// valid after the next call.
+func (p *Csp2dProblemImpl) ReinsertItemsForTest(base []NodeView, order []int) ([]NodeView, error) {
+	nodes, err := p.reinsertItemsForest(fromViews(base), order)
+	if err != nil {
+		return nil, err
+	}
+	return toViews(nodes), nil
+}
+
+func (p *Csp2dProblemImpl) MutateEliminateAndRepairForTest(parent *Csp2dIndividualImpl, rnd *rand.Rand) (*Csp2dIndividualImpl, bool, error) {
+	return p.mutateEliminateAndRepair(parent, rnd)
+}
+
+func (p *Csp2dProblemImpl) MutateCriticalOperatorFlipForTest(parent *Csp2dIndividualImpl, rnd *rand.Rand) (*Csp2dIndividualImpl, bool, error) {
+	return p.mutateCriticalOperatorFlip(parent, rnd)
+}
+
+func BuildReinsertionOrdersForTest(items []int, inputs []InputDefinition, rnd *rand.Rand) [][]int {
+	return buildReinsertionOrders(items, inputs, rnd)
+}
+
+// ---- Arena -----------------------------------------------------------------
+
+// GenCapacitiesForTest returns the capacities (in ints) of the current and next
+// generation arenas.
+func (a *Arena) GenCapacitiesForTest() (current, next int) {
+	return a.currentGen.Capacity(), a.nextGen.Capacity()
+}
+
+// ValuesForTest exposes the constraint values (maxShortSide < 0 means
+// unconstrained).
+func (c *Constraints) ValuesForTest() (maxLongSide, maxShortSide, sawWidth float64) {
+	return c.maxLongSide, c.maxShortSide, c.sawWidth
+}
+
+// SetFitnessForTest sets the cached fitness directly (for ordering tests).
+func (individual *Csp2dIndividualImpl) SetFitnessForTest(vector [3]float64, value float64) {
+	individual.fitnessVector = vector
+	individual.fitnessValue = value
+}

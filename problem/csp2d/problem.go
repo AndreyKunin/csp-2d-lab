@@ -531,6 +531,27 @@ func (p *Csp2dProblemImpl) Crossover(crossoverSet []*problem.Individual, rnd *ra
 }
 
 func (p *Csp2dProblemImpl) pmx(parent1 *Csp2dIndividualImpl, parent2 *Csp2dIndividualImpl, rnd *rand.Rand) (*Csp2dIndividualImpl, *Csp2dIndividualImpl, int, int, error) {
+	var leafsSize = len(parent1.postfix)/2 + 1
+	// Select crossover points
+	var pointLeft = rnd.Intn(leafsSize)
+	var pointRight = pointLeft
+	for {
+		pointRight = rnd.Intn(leafsSize)
+		if pointRight != pointLeft {
+			break
+		}
+	}
+	if pointLeft > pointRight {
+		pointLeft, pointRight = pointRight, pointLeft
+	}
+	offspring1, offspring2, err := p.pmxWithPoints(parent1, parent2, pointLeft, pointRight)
+	return offspring1, offspring2, pointLeft, pointRight, err
+}
+
+// pmxWithPoints applies PMX to the leaf orders of both parents using the
+// inclusive leaf-index segment [pointLeft, pointRight] and writes the result
+// back into each parent's own operator skeleton.
+func (p *Csp2dProblemImpl) pmxWithPoints(parent1 *Csp2dIndividualImpl, parent2 *Csp2dIndividualImpl, pointLeft int, pointRight int) (*Csp2dIndividualImpl, *Csp2dIndividualImpl, error) {
 	var postfix1 = parent1.postfix
 	var postfix2 = parent2.postfix
 	var treeSize = len(postfix1)
@@ -546,17 +567,8 @@ func (p *Csp2dProblemImpl) pmx(parent1 *Csp2dIndividualImpl, parent2 *Csp2dIndiv
 			order2 = append(order2, postfix2[i])
 		}
 	}
-	// Select crossover points
-	var pointLeft = rnd.Intn(leafsSize)
-	var pointRight = pointLeft
-	for {
-		pointRight = rnd.Intn(leafsSize)
-		if pointRight != pointLeft {
-			break
-		}
-	}
-	if pointLeft > pointRight {
-		pointLeft, pointRight = pointRight, pointLeft
+	if pointLeft < 0 || pointRight >= leafsSize || pointLeft > pointRight {
+		return nil, nil, fmt.Errorf("invalid PMX segment [%d, %d] for %d leaves", pointLeft, pointRight, leafsSize)
 	}
 	var mapping1 = make(map[int]int)
 	var mapping2 = make(map[int]int)
@@ -612,5 +624,5 @@ func (p *Csp2dProblemImpl) pmx(parent1 *Csp2dIndividualImpl, parent2 *Csp2dIndiv
 	// Build offspring individuals
 	i1 := newIndividual(offspringPostfix1).(*Csp2dIndividualImpl)
 	i2 := newIndividual(offspringPostfix2).(*Csp2dIndividualImpl)
-	return i1, i2, pointLeft, pointRight, nil
+	return i1, i2, nil
 }
