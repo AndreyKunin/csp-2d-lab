@@ -189,7 +189,14 @@ func (p *Csp2dProblemImpl) evaluateFitness(individual *Csp2dIndividualImpl) erro
 	if individual.IsFitnessComputed() {
 		return nil
 	}
-	var forest, err = p.getForest(individual)
+	return p.cacheForest(individual, nil)
+}
+
+// cacheForest decodes the individual and caches its forest and fitness. The
+// forest's node slice reuses `reuse` when it is large enough; reuse must be
+// referenced by nothing else (the forest of a superseded child, MEM-04).
+func (p *Csp2dProblemImpl) cacheForest(individual *Csp2dIndividualImpl, reuse []MeteredNode) error {
+	var forest, err = p.getForestInto(individual, reuse)
 	if err != nil {
 		return err
 	}
@@ -203,6 +210,12 @@ func (p *Csp2dProblemImpl) evaluateFitness(individual *Csp2dIndividualImpl) erro
 // getForest decodes the individual and copies the sheets' postfixes into the
 // generation arena, so the forest can be cached on the individual.
 func (p *Csp2dProblemImpl) getForest(individual *Csp2dIndividualImpl) ([]MeteredNode, error) {
+	return p.getForestInto(individual, nil)
+}
+
+// getForestInto is getForest with the node slice taken from reuse when it is
+// large enough.
+func (p *Csp2dProblemImpl) getForestInto(individual *Csp2dIndividualImpl, reuse []MeteredNode) ([]MeteredNode, error) {
 	forest, err := p.decodeForest(individual.postfix)
 	if err != nil {
 		return nil, err
@@ -210,7 +223,12 @@ func (p *Csp2dProblemImpl) getForest(individual *Csp2dIndividualImpl) ([]Metered
 	// Copy surviving nodes out of the pool so the pool can be reused.
 	// Postfix slices are allocated from the generational arena: they live
 	// for at most one epoch unless the individual becomes an elite.
-	result := make([]MeteredNode, len(forest))
+	var result []MeteredNode
+	if cap(reuse) >= len(forest) {
+		result = reuse[:len(forest)]
+	} else {
+		result = make([]MeteredNode, len(forest))
+	}
 	for i, node := range forest {
 		copied := node
 		copied.postfix = p.arena.GenAlloc(node.postfix)
@@ -220,19 +238,18 @@ func (p *Csp2dProblemImpl) getForest(individual *Csp2dIndividualImpl) ([]Metered
 }
 
 // decodeForest decodes a postfix into its sheets without taking arena space:
-// the sheets' postfixes live in the forest slice buffer and are valid only
-// until the next decode. Use it for trials that are usually discarded.
+// the returned slice and the sheets' postfixes live in scratch buffers and are
+// valid only until the next decode. Use it for trials that are usually
+// discarded.
 func (p *Csp2dProblemImpl) decodeForest(postfix []int) ([]MeteredNode, error) {
-	n := len(postfix)
-
 	// Borrow from pools
 	nodePool := p.arena.GetForestBuffer()
 	buf := p.arena.GetForestSliceBuffer()
 
 	nodeIdx := 0
 	bufOK := true
-	stack := make([]MeteredNode, 0, n/2+1)
-	forest := make([]MeteredNode, 0, n/2+1)
+	stack := p.arena.decodeStack[:0]
+	forest := p.arena.decodeSheets[:0]
 
 	for _, id := range postfix {
 		if id < 0 {
@@ -534,21 +551,20 @@ func (p *Csp2dProblemImpl) Crossover(crossoverSet []*problem.Individual, rnd *ra
 		parent2 := (*crossoverSet[i+1]).(*Csp2dIndividualImpl)
 		offspringProduced := false
 		for j := 0; j < MaxIndividualCreationRetries; j++ {
-			var offspring1, offspring2, _, _, err = p.pmx(parent1, parent2, rnd)
+			var postfix1, postfix2, _, _, err = p.pmx(parent1, parent2, rnd)
 			if err != nil {
 				return nil, failures, err
 			}
-			if p.isProtected(offspring1.postfix) {
+			if p.isProtected(postfix1) {
 				continue
 			}
-			if p.isProtected(offspring2.postfix) {
+			if p.isProtected(postfix2) {
 				continue
 			}
-			// Accepted: copy both children out of the PMX scratch (MEM-02).
-			offspring1.postfix = p.arena.GenAlloc(offspring1.postfix)
-			offspring2.postfix = p.arena.GenAlloc(offspring2.postfix)
-			var o1 problem.Individual = offspring1
-			var o2 problem.Individual = offspring2
+			// Accepted: copy both children out of the PMX scratch (MEM-02);
+			// rejected attempts allocate nothing (MEM-04).
+			var o1 problem.Individual = newIndividual(p.arena.GenAlloc(postfix1))
+			var o2 problem.Individual = newIndividual(p.arena.GenAlloc(postfix2))
 			offspringSet = append(offspringSet, &o1)
 			offspringSet = append(offspringSet, &o2)
 			offspringProduced = true
@@ -580,7 +596,7 @@ func (p *Csp2dProblemImpl) Crossover(crossoverSet []*problem.Individual, rnd *ra
 	return offspringSet, failures, nil
 }
 
-func (p *Csp2dProblemImpl) pmx(parent1 *Csp2dIndividualImpl, parent2 *Csp2dIndividualImpl, rnd *rand.Rand) (*Csp2dIndividualImpl, *Csp2dIndividualImpl, int, int, error) {
+func (p *Csp2dProblemImpl) pmx(parent1 *Csp2dIndividualImpl, parent2 *Csp2dIndividualImpl, rnd *rand.Rand) ([]int, []int, int, int, error) {
 	var leafsSize = len(parent1.postfix)/2 + 1
 	// Select crossover points
 	var pointLeft = rnd.Intn(leafsSize)
@@ -602,17 +618,18 @@ func (p *Csp2dProblemImpl) pmx(parent1 *Csp2dIndividualImpl, parent2 *Csp2dIndiv
 // inclusive leaf-index segment [pointLeft, pointRight] and writes the result
 // back into each parent's own operator skeleton.
 //
-// The children's postfixes live in the arena's PMX scratch and are valid only
-// until the next PMX: a caller that keeps a child copies it into the
-// generation arena (Crossover does so after the protection check).
-func (p *Csp2dProblemImpl) pmxWithPoints(parent1 *Csp2dIndividualImpl, parent2 *Csp2dIndividualImpl, pointLeft int, pointRight int) (*Csp2dIndividualImpl, *Csp2dIndividualImpl, error) {
+// It returns the children's postfixes, which live in the arena's PMX scratch
+// and are valid only until the next PMX: a caller that keeps a child copies it
+// into the generation arena and wraps it in an individual (Crossover does so
+// after the protection check).
+func (p *Csp2dProblemImpl) pmxWithPoints(parent1 *Csp2dIndividualImpl, parent2 *Csp2dIndividualImpl, pointLeft int, pointRight int) ([]int, []int, error) {
 	var postfix1 = parent1.postfix
 	var postfix2 = parent2.postfix
 	var treeSize = len(postfix1)
 	var leafsSize = treeSize/2 + 1
-	// Order leaves in the postfix
-	var order1 = make([]int, 0, leafsSize)
-	var order2 = make([]int, 0, leafsSize)
+	// Order leaves in the postfix (scratch buffers, MEM-04)
+	var order1 = p.arena.pmxOrders[0][:0]
+	var order2 = p.arena.pmxOrders[1][:0]
 	for i := 0; i < treeSize; i++ {
 		if postfix1[i] >= 0 {
 			order1 = append(order1, postfix1[i])
@@ -624,8 +641,13 @@ func (p *Csp2dProblemImpl) pmxWithPoints(parent1 *Csp2dIndividualImpl, parent2 *
 	if pointLeft < 0 || pointRight >= leafsSize || pointLeft > pointRight {
 		return nil, nil, fmt.Errorf("invalid PMX segment [%d, %d] for %d leaves", pointLeft, pointRight, leafsSize)
 	}
-	var mapping1 = make(map[int]int)
-	var mapping2 = make(map[int]int)
+	// The mappings are arrays indexed by part id (ids are 0..leafsSize-1);
+	// -1 means "no mapping". They are cleared again before returning.
+	if len(p.arena.pmxMapping[0]) < leafsSize {
+		p.arena.pmxMapping = [2][]int{noMapping(leafsSize), noMapping(leafsSize)}
+	}
+	var mapping1 = p.arena.pmxMapping[0]
+	var mapping2 = p.arena.pmxMapping[1]
 	for i := pointLeft; i <= pointRight; i++ {
 		// Swap middle segment
 		order1[i], order2[i] = order2[i], order1[i]
@@ -638,23 +660,19 @@ func (p *Csp2dProblemImpl) pmxWithPoints(parent1 *Csp2dIndividualImpl, parent2 *
 		if i < pointLeft || i > pointRight {
 			value1 := order1[i]
 			value2 := order2[i]
-			for {
-				value, exists := mapping1[value1]
-				if !exists {
-					break
-				}
-				value1 = value
+			for mapping1[value1] >= 0 {
+				value1 = mapping1[value1]
 			}
-			for {
-				value, exists := mapping2[value2]
-				if !exists {
-					break
-				}
-				value2 = value
+			for mapping2[value2] >= 0 {
+				value2 = mapping2[value2]
 			}
 			order1[i] = value1
 			order2[i] = value2
 		}
+	}
+	for i := pointLeft; i <= pointRight; i++ {
+		mapping1[order1[i]] = -1
+		mapping2[order2[i]] = -1
 	}
 	// Replace leaves with offspring
 	offspringPostfix1, offspringPostfix2 := p.arena.GetPMXOffspring()
@@ -674,8 +692,5 @@ func (p *Csp2dProblemImpl) pmxWithPoints(parent1 *Csp2dIndividualImpl, parent2 *
 			offspringPostfix2 = append(offspringPostfix2, postfix2[i])
 		}
 	}
-	// Build offspring individuals
-	i1 := newIndividual(offspringPostfix1).(*Csp2dIndividualImpl)
-	i2 := newIndividual(offspringPostfix2).(*Csp2dIndividualImpl)
-	return i1, i2, nil
+	return offspringPostfix1, offspringPostfix2, nil
 }

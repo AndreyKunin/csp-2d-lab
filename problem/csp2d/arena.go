@@ -56,6 +56,18 @@ type Arena struct {
 	// in trialInts (true) or is shared with the parent's forest (false).
 	reinsertionFresh []bool
 
+	// Working buffers of the hot paths (MEM-04). Each is used by one function
+	// and is valid until that function is called again.
+	decodeStack   []MeteredNode       // decodeForest: operand stack
+	decodeSheets  []MeteredNode       // decodeForest: the returned sheets
+	baseForest    []MeteredNode       // mutateEliminateAndRepair: sheets kept
+	leafItems     []int               // mutateEliminateAndRepair: the removed sheet's parts
+	orders        [][]int             // buildReinsertionOrders: the 4 orders
+	pmxOrders     [2][]int            // pmxWithPoints: leaf orders
+	pmxMapping    [2][]int            // pmxWithPoints: id -> id, -1 = none
+	rankStack     []Metrics           // rankCriticalOperators: operand stack
+	rankCandidate []OperatorCandidate // rankCriticalOperators: the result
+
 	// Tier-2: double-buffered generational + elite arenas.
 	currentGen *PostfixArena
 	nextGen    *PostfixArena
@@ -117,6 +129,15 @@ func NewArena(postfixLen int, populationSize int, eliteCount int) *Arena {
 		pmxOffspring:       [2][]int{make([]int, 0, postfixLen), make([]int, 0, postfixLen)},
 		trialInts:          make([]int, 2*postfixLen),
 		reinsertionFresh:   make([]bool, 0, postfixLen),
+		decodeStack:        make([]MeteredNode, 0, postfixLen/2+1),
+		decodeSheets:       make([]MeteredNode, 0, postfixLen/2+1),
+		baseForest:         make([]MeteredNode, 0, postfixLen/2+1),
+		leafItems:          make([]int, 0, postfixLen/2+1),
+		orders:             [][]int{make([]int, 0, postfixLen/2+1), make([]int, 0, postfixLen/2+1), make([]int, 0, postfixLen/2+1), make([]int, 0, postfixLen/2+1)},
+		pmxOrders:          [2][]int{make([]int, 0, postfixLen/2+1), make([]int, 0, postfixLen/2+1)},
+		pmxMapping:         [2][]int{noMapping(postfixLen/2 + 1), noMapping(postfixLen/2 + 1)},
+		rankStack:          make([]Metrics, 0, postfixLen/2+1),
+		rankCandidate:      make([]OperatorCandidate, 0, postfixLen/2+1),
 		numLabelScratch:    make([]int32, 0, postfixLen),
 		postfixLen:         postfixLen,
 		currentGen:         NewPostfixArena("currentGen", genCapacity),
@@ -125,6 +146,15 @@ func NewArena(postfixLen int, populationSize int, eliteCount int) *Arena {
 		eliteStandby:       NewPostfixArena("elite", eliteCapacity),
 		genTarget:          genCapacity,
 	}
+}
+
+// noMapping returns n mapping entries, all -1 (no mapping).
+func noMapping(n int) []int {
+	m := make([]int, n)
+	for i := range m {
+		m[i] = -1
+	}
+	return m
 }
 
 func (a *Arena) GetForestBuffer() []MeteredNode      { return a.forestBuffer[:a.postfixLen] }

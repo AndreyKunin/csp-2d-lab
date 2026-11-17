@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
-	"sort"
+	"slices"
 )
 
 type OperatorCandidate struct {
@@ -44,9 +44,10 @@ func (p *Csp2dProblemImpl) Mutation(mutationRate float64, mutationSet []*problem
 		if err != nil {
 			return totalMutations, totalWeight, failures, err
 		}
-		var reuse []int // the buffer a kept child may overwrite
+		var reuse []int               // the postfix buffer a kept child may overwrite
+		var reuseForest []MeteredNode // and its forest's node slice (MEM-04)
 		if owned[individualIndex] {
-			reuse = parent.postfix
+			reuse, reuseForest = parent.postfix, parent.meteredForest
 		}
 
 		// Each step returns a candidate built in scratch; it takes arena space
@@ -59,7 +60,7 @@ func (p *Csp2dProblemImpl) Mutation(mutationRate float64, mutationSet []*problem
 			return totalMutations, totalWeight, failures, err
 		}
 		if child != nil && improved && !p.isProtected(child.postfix) {
-			p.commitRepairChild(child, reuse)
+			p.commitRepairChild(child, reuse, reuseForest)
 			var result problem.Individual = child
 			mutationSet[individualIndex] = &result
 			owned[individualIndex] = true
@@ -76,23 +77,22 @@ func (p *Csp2dProblemImpl) Mutation(mutationRate float64, mutationSet []*problem
 			if err != nil {
 				return totalMutations, totalWeight, failures, err
 			}
-			if child != nil && improved && !p.isProtected(child.postfix) {
-				// Decodes the candidate's scratch postfix; the forest goes to
-				// the arena, the postfix is committed below.
-				err1 := p.evaluateFitness(child)
-				if err1 != nil {
+			// The candidate carries the fitness of its trial decode, so it is
+			// compared before anything of the parent's is overwritten.
+			if child != nil && improved && !p.isProtected(child.postfix) && LessFitness(child, parent) {
+				// Decodes the candidate's scratch postfix and caches the
+				// forest; then the postfix is committed.
+				if err1 := p.cacheForest(child, reuseForest); err1 != nil {
 					return totalMutations, totalWeight, failures, err1
 				}
-				if LessFitness(child, parent) {
-					child.postfix = p.commitPostfix(child.postfix, reuse)
-					var result problem.Individual = child
-					mutationSet[individualIndex] = &result
-					owned[individualIndex] = true
-					totalMutations++
-					totalWeight += weight
-					mutationsAllowed -= weight
-					mutated = true
-				}
+				child.postfix = p.commitPostfix(child.postfix, reuse)
+				var result problem.Individual = child
+				mutationSet[individualIndex] = &result
+				owned[individualIndex] = true
+				totalMutations++
+				totalWeight += weight
+				mutationsAllowed -= weight
+				mutated = true
 			}
 		}
 
@@ -154,16 +154,26 @@ func (p *Csp2dProblemImpl) commitPostfix(src, reuse []int) []int {
 	return p.arena.GenAlloc(src)
 }
 
-// commitRepairChild keeps an eliminate-and-repair candidate: the sheets it
-// re-packed are copied out of the trial buffer into the arena (the others are
-// shared with the parent's forest), then its postfix is committed. It must
-// directly follow mutateEliminateAndRepair, whose freshness flags it reads.
-func (p *Csp2dProblemImpl) commitRepairChild(child *Csp2dIndividualImpl, reuse []int) {
+// commitRepairChild keeps an eliminate-and-repair candidate: its forest (still
+// the reinsertion scratch) is copied into reuseForest when that is large
+// enough, else into a new slice; the sheets it re-packed are copied out of the
+// trial buffer into the arena (the others are shared with the parent's
+// forest); then its postfix is committed. It must directly follow
+// mutateEliminateAndRepair, whose scratch and freshness flags it reads.
+func (p *Csp2dProblemImpl) commitRepairChild(child *Csp2dIndividualImpl, reuse []int, reuseForest []MeteredNode) {
+	var kept []MeteredNode
+	if cap(reuseForest) >= len(child.meteredForest) {
+		kept = reuseForest[:len(child.meteredForest)]
+	} else {
+		kept = make([]MeteredNode, len(child.meteredForest))
+	}
+	copy(kept, child.meteredForest)
 	for i, fresh := range p.arena.reinsertionFresh {
 		if fresh {
-			child.meteredForest[i].postfix = p.arena.GenAlloc(child.meteredForest[i].postfix)
+			kept[i].postfix = p.arena.GenAlloc(kept[i].postfix)
 		}
 	}
+	child.meteredForest = kept
 	child.postfix = p.commitPostfix(child.postfix, reuse)
 }
 
@@ -184,23 +194,24 @@ func (p *Csp2dProblemImpl) mutateEliminateAndRepair(parent *Csp2dIndividualImpl,
 
 	worstIndex := p.selectWorstTree(forest)
 	removedTree := forest[worstIndex]
-	baseForest := make([]MeteredNode, 0, len(forest)-1)
-	baseForest = append(baseForest, forest[:worstIndex]...)
+	baseForest := append(p.arena.baseForest[:0], forest[:worstIndex]...)
 	baseForest = append(baseForest, forest[worstIndex+1:]...)
-	items := removedTree.leafIDs()
+	p.arena.baseForest = baseForest[:0] // keep the buffer if it grew
+	items := removedTree.appendLeafIDs(p.arena.leafItems[:0])
+	p.arena.leafItems = items[:0]
 	if len(items) == 0 {
 		return nil, false, nil
 	}
 
-	orders := buildReinsertionOrders(items, p.inputs, rnd)
+	orders := buildReinsertionOrders(items, p.inputs, rnd, p.arena.orders)
 	rnd.Shuffle(len(orders), func(i, j int) {
 		orders[i], orders[j] = orders[j], orders[i]
 	})
 
 	parentFitness := parent.fitnessVector
 
-	// bestForest is the WINNING forest — owned by us, not the scratch.
-	// It is populated only when an improvement is found.
+	// bestForest is the WINNING forest. It is still the reinsertion scratch:
+	// the caller copies it if it keeps the child (commitRepairChild).
 	var bestForest []MeteredNode
 	var bestFitness [3]float64
 	improved := false
@@ -217,13 +228,9 @@ func (p *Csp2dProblemImpl) mutateEliminateAndRepair(parent *Csp2dIndividualImpl,
 		fit := p.getFitnessVector(candidate)
 
 		if LessFitnessRaw(fit, parentFitness) {
-			// Capture the winner: copy the []MeteredNode headers out of the
-			// scratch into a fresh slice so subsequent trials (or future
-			// mutateEliminateAndRepair calls) cannot overwrite it. Each
-			// node's postfix already lives in the generational postfix
-			// arena, so we don't need to copy postfix data.
-			bestForest = make([]MeteredNode, len(candidate))
-			copy(bestForest, candidate)
+			// The first improvement wins, so no later trial overwrites the
+			// scratch before the caller commits or drops the child.
+			bestForest = candidate
 			bestFitness = fit
 			improved = true
 			break // first improvement wins, matching the original behavior
@@ -439,23 +446,21 @@ func (p *Csp2dProblemImpl) mutateCriticalOperatorFlip(parent *Csp2dIndividualImp
 	if !improved {
 		return parent, false, nil
 	}
-	return newIndividual(best).(*Csp2dIndividualImpl), true, nil
+	child := newIndividual(best).(*Csp2dIndividualImpl)
+	child.fitnessVector = bestFitness // its forest is not cached yet
+	return child, true, nil
 }
 
 func (p *Csp2dProblemImpl) rankCriticalOperators(postfix []int) []OperatorCandidate {
-	type entry struct {
-		metrics Metrics
-	}
-	stack := make([]entry, 0, len(postfix)/2+1)
-	var result []OperatorCandidate
+	// Scratch buffers (MEM-04): the result is valid until the next call.
+	stack := p.arena.rankStack[:0]
+	result := p.arena.rankCandidate[:0]
 
 	for i, id := range postfix {
 		if id >= 0 { // leaf
-			stack = append(stack, entry{
-				metrics: Metrics{
-					longSide:  p.inputs[id].LongSide,
-					shortSide: p.inputs[id].ShortSide,
-				},
+			stack = append(stack, Metrics{
+				longSide:  p.inputs[id].LongSide,
+				shortSide: p.inputs[id].ShortSide,
 			})
 		} else { // operator
 			if len(stack) < 2 {
@@ -465,9 +470,9 @@ func (p *Csp2dProblemImpl) rankCriticalOperators(postfix []int) []OperatorCandid
 			left := stack[len(stack)-2]
 			stack = stack[:len(stack)-2]
 
-			current := p.reduce(id, left.metrics, right.metrics, p.constraints.sawWidth)
+			current := p.reduce(id, left, right, p.constraints.sawWidth)
 			subtreeArea := current.GetArea()
-			childrenArea := left.metrics.GetArea() + right.metrics.GetArea()
+			childrenArea := left.GetArea() + right.GetArea()
 			penalty := subtreeArea - childrenArea
 
 			result = append(result, OperatorCandidate{
@@ -475,46 +480,51 @@ func (p *Csp2dProblemImpl) rankCriticalOperators(postfix []int) []OperatorCandid
 				Score: penalty,
 			})
 
-			stack = append(stack, entry{metrics: current})
+			stack = append(stack, current)
 		}
 	}
+	p.arena.rankStack, p.arena.rankCandidate = stack[:0], result[:0] // keep grown buffers
 
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].Score > result[j].Score
-	})
+	// slices.SortFunc runs the same pattern-defeating quicksort as sort.Slice
+	// (both are generated from one template) without its per-call allocations;
+	// it only tests cmp < 0, which is exactly the old "less".
+	slices.SortFunc(result, func(a, b OperatorCandidate) int { return descending(a.Score, b.Score) })
 
 	return result
 }
 
-func buildReinsertionOrders(items []int, inputs []InputDefinition, rnd *rand.Rand) [][]int {
-	orders := make([][]int, 0, 4)
+// descending orders larger values first: -1 if a > b, 1 if b > a, else 0.
+func descending(a, b float64) int {
+	if a > b {
+		return -1
+	}
+	if b > a {
+		return 1
+	}
+	return 0
+}
 
-	byArea := append([]int(nil), items...)
-	sort.Slice(byArea, func(i, j int) bool {
-		ai := inputs[byArea[i]].LongSide * inputs[byArea[i]].ShortSide
-		aj := inputs[byArea[j]].LongSide * inputs[byArea[j]].ShortSide
-		return ai > aj
+// buildReinsertionOrders fills the 4 slices of orders (by area, long side,
+// short side, random) with the items and returns orders. The slices are
+// reused (MEM-04); a grown one is kept.
+func buildReinsertionOrders(items []int, inputs []InputDefinition, rnd *rand.Rand, orders [][]int) [][]int {
+	byArea := append(orders[0][:0], items...)
+	slices.SortFunc(byArea, func(a, b int) int {
+		return descending(inputs[a].LongSide*inputs[a].ShortSide, inputs[b].LongSide*inputs[b].ShortSide)
 	})
-	orders = append(orders, byArea)
 
-	byLong := append([]int(nil), items...)
-	sort.Slice(byLong, func(i, j int) bool {
-		return inputs[byLong[i]].LongSide > inputs[byLong[j]].LongSide
-	})
-	orders = append(orders, byLong)
+	byLong := append(orders[1][:0], items...)
+	slices.SortFunc(byLong, func(a, b int) int { return descending(inputs[a].LongSide, inputs[b].LongSide) })
 
-	byShort := append([]int(nil), items...)
-	sort.Slice(byShort, func(i, j int) bool {
-		return inputs[byShort[i]].ShortSide > inputs[byShort[j]].ShortSide
-	})
-	orders = append(orders, byShort)
+	byShort := append(orders[2][:0], items...)
+	slices.SortFunc(byShort, func(a, b int) int { return descending(inputs[a].ShortSide, inputs[b].ShortSide) })
 
-	randomOrder := append([]int(nil), items...)
+	randomOrder := append(orders[3][:0], items...)
 	rnd.Shuffle(len(randomOrder), func(i, j int) {
 		randomOrder[i], randomOrder[j] = randomOrder[j], randomOrder[i]
 	})
-	orders = append(orders, randomOrder)
 
+	orders[0], orders[1], orders[2], orders[3] = byArea, byLong, byShort, randomOrder
 	return orders
 }
 

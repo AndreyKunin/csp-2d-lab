@@ -132,14 +132,22 @@ func (p *Csp2dProblemImpl) IsProtectedForTest(postfix []int) bool   { return p.i
 
 // ---- Crossover -------------------------------------------------------------
 
-// PMXForTest and PMXWithPointsForTest return children whose postfixes live in
-// the PMX scratch: valid until the next PMX call.
+// PMXForTest and PMXWithPointsForTest wrap the children in individuals whose
+// postfixes live in the PMX scratch: valid until the next PMX call.
 func (p *Csp2dProblemImpl) PMXForTest(parent1, parent2 *Csp2dIndividualImpl, rnd *rand.Rand) (*Csp2dIndividualImpl, *Csp2dIndividualImpl, int, int, error) {
-	return p.pmx(parent1, parent2, rnd)
+	c1, c2, left, right, err := p.pmx(parent1, parent2, rnd)
+	if err != nil {
+		return nil, nil, left, right, err
+	}
+	return &Csp2dIndividualImpl{postfix: c1}, &Csp2dIndividualImpl{postfix: c2}, left, right, nil
 }
 
 func (p *Csp2dProblemImpl) PMXWithPointsForTest(parent1, parent2 *Csp2dIndividualImpl, left, right int) (*Csp2dIndividualImpl, *Csp2dIndividualImpl, error) {
-	return p.pmxWithPoints(parent1, parent2, left, right)
+	c1, c2, err := p.pmxWithPoints(parent1, parent2, left, right)
+	if err != nil {
+		return nil, nil, err
+	}
+	return &Csp2dIndividualImpl{postfix: c1}, &Csp2dIndividualImpl{postfix: c2}, nil
 }
 
 // ---- Mutation operators ----------------------------------------------------
@@ -162,6 +170,8 @@ func (p *Csp2dProblemImpl) ReplaceElementsForTest(individual *Csp2dIndividualImp
 	return weight, err
 }
 
+// RankCriticalOperatorsForTest returns the scratch-backed result: valid until
+// the next call.
 func (p *Csp2dProblemImpl) RankCriticalOperatorsForTest(postfix []int) []OperatorCandidate {
 	return p.rankCriticalOperators(postfix)
 }
@@ -194,7 +204,7 @@ func (p *Csp2dProblemImpl) ReinsertItemsForTest(base []NodeView, order []int) ([
 func (p *Csp2dProblemImpl) MutateEliminateAndRepairForTest(parent *Csp2dIndividualImpl, rnd *rand.Rand) (*Csp2dIndividualImpl, bool, error) {
 	child, improved, err := p.mutateEliminateAndRepair(parent, rnd)
 	if err == nil && improved {
-		p.commitRepairChild(child, nil)
+		p.commitRepairChild(child, nil, nil)
 	}
 	return child, improved, err
 }
@@ -202,7 +212,7 @@ func (p *Csp2dProblemImpl) MutateEliminateAndRepairForTest(parent *Csp2dIndividu
 func (p *Csp2dProblemImpl) MutateCriticalOperatorFlipForTest(parent *Csp2dIndividualImpl, rnd *rand.Rand) (*Csp2dIndividualImpl, bool, error) {
 	child, improved, err := p.mutateCriticalOperatorFlip(parent, rnd)
 	if err == nil && improved {
-		if err = p.evaluateFitness(child); err == nil {
+		if err = p.cacheForest(child, nil); err == nil {
 			child.postfix = p.commitPostfix(child.postfix, nil)
 		}
 	}
@@ -210,7 +220,7 @@ func (p *Csp2dProblemImpl) MutateCriticalOperatorFlipForTest(parent *Csp2dIndivi
 }
 
 func BuildReinsertionOrdersForTest(items []int, inputs []InputDefinition, rnd *rand.Rand) [][]int {
-	return buildReinsertionOrders(items, inputs, rnd)
+	return buildReinsertionOrders(items, inputs, rnd, make([][]int, 4))
 }
 
 // ---- Arena -----------------------------------------------------------------
@@ -246,4 +256,11 @@ func (a *PostfixArena) BaseForTest() *int {
 		return nil
 	}
 	return &a.buf[0]
+}
+
+// DecodeForestForTest decodes in scratch, as a critical-flip trial does, and
+// returns the number of sheets.
+func (p *Csp2dProblemImpl) DecodeForestForTest(postfix []int) (int, error) {
+	forest, err := p.decodeForest(postfix)
+	return len(forest), err
 }

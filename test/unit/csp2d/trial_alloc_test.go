@@ -165,10 +165,16 @@ func TestMutationChainReusesSlotBuffer(t *testing.T) {
 	p, n := fixtureProblem(t, "D14-medium-60.json", 2000, 10)
 	rnd := rand.New(rand.NewSource(3))
 	set := make([]*problem.Individual, size)
+	originals := make([]*csp2d.Csp2dIndividualImpl, size)
+	snapshots := make([][]csp2d.NodeView, size)
 	for i := range set {
 		ind := evaluated(t, p, randomPostfix(rnd, n)) // parents' forests are not part of the measurement
 		var pi problem.Individual = ind
 		set[i] = &pi
+		originals[i] = ind
+		for _, tree := range ind.ForestForTest() {
+			snapshots[i] = append(snapshots[i], csp2d.NodeView{Postfix: copyInts(tree.Postfix), Long: tree.Long, Short: tree.Short})
+		}
 	}
 	before := p.ArenaForTest().GenDemandForTest()
 	count, _, _, err := p.Mutation(0.07, set, rnd)
@@ -190,6 +196,19 @@ func TestMutationChainReusesSlotBuffer(t *testing.T) {
 	for i, ind := range set {
 		if err := checkStructure(p, csp2d.AsIndividualForTest(*ind), n); err != nil {
 			t.Fatalf("individual %d: %v", i, err)
+		}
+	}
+	// Only children created by the call are reused: the individuals passed in
+	// keep their cached forests (MEM-04 reuses forest buffers too).
+	for i, o := range originals {
+		forest := o.ForestForTest()
+		if len(forest) != len(snapshots[i]) {
+			t.Fatalf("input %d: forest has %d sheets, had %d", i, len(forest), len(snapshots[i]))
+		}
+		for k, tree := range forest {
+			if want := snapshots[i][k]; !equalInts(tree.Postfix, want.Postfix) || tree.Long != want.Long || tree.Short != want.Short {
+				t.Fatalf("input %d: cached sheet %d changed: %v -> %v", i, k, want, tree)
+			}
 		}
 	}
 }
