@@ -63,7 +63,6 @@ func TestSimulatePauseResumeChannels(t *testing.T) {
 
 // UT-GA-MGR-05: deleting a running or paused job ends its goroutine.
 func TestManagerDeleteStopsJob(t *testing.T) {
-	testutil.Pending(t, "a deleted job's goroutine stays blocked in the paused state forever")
 	m := ga.NewSimulationManager()
 	baseline := runtime.NumGoroutine()
 	for _, pauseFirst := range []bool{false, true} {

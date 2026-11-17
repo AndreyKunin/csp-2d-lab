@@ -5,6 +5,7 @@ import (
 	"csp2d/problem"
 	"csp2d/util"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"sync"
 )
@@ -63,7 +64,11 @@ func (sm *SimulationManagerImpl) PauseSimulation(id string) error {
 
 	select {
 	case job.PauseChan <- struct{}{}:
-		<-job.PauseAckChan
+		select {
+		case <-job.PauseAckChan:
+		case <-job.done:
+			return fmt.Errorf("simulation %s was deleted", id)
+		}
 	default:
 		return fmt.Errorf("pause signal already sent for simulation %s", id)
 	}
@@ -86,7 +91,11 @@ func (sm *SimulationManagerImpl) ResumeSimulation(id string) error {
 
 	select {
 	case job.ResumeChan <- struct{}{}:
-		<-job.ResumeAckChan
+		select {
+		case <-job.ResumeAckChan:
+		case <-job.done:
+			return fmt.Errorf("simulation %s was deleted", id)
+		}
 	default:
 		return fmt.Errorf("resume signal already sent for simulation %s", id)
 	}
@@ -142,10 +151,9 @@ func (sm *SimulationManagerImpl) DeleteSimulation(id string) (SimulationJobStatu
 		return SimulationJobStatus{}, fmt.Errorf("simulation %s not found", id)
 	}
 
-	select {
-	case job.PauseChan <- struct{}{}:
-	default:
-	}
+	// Stop the job's goroutine (running or paused) so that it and the problem's
+	// memory are released; a finished job ignores this.
+	job.cancel()
 
 	delete(sm.jobs, id)
 
@@ -192,6 +200,10 @@ func (sm *SimulationManagerImpl) runSimulation(job *SimulationJob) {
 	err := Simulate(job)
 	//TODO: these finished jobs need to be deleted eventually
 
+	if errors.Is(err, ErrSimulationCancelled) {
+		util.Info.Printf("Simulation %s cancelled (deleted)", job.id)
+		return
+	}
 	if err != nil {
 		util.Warning.Println(err.Error())
 		job.UpdateJobStatus(StatusError, err)

@@ -40,9 +40,21 @@ type SimulationJob struct {
 	ResumeChan    chan struct{}
 	ResumeAckChan chan struct{}
 
+	// done is closed (once) when the job is deleted. The GA loop returns as soon
+	// as it observes it, running or paused, so the goroutine and the problem's
+	// memory are released.
+	done       chan struct{}
+	cancelOnce sync.Once
+
 	problem problem.Problem
 
 	mu sync.RWMutex
+}
+
+// cancel asks the job's goroutine to stop. Safe to call more than once and after
+// the job has finished.
+func (job *SimulationJob) cancel() {
+	job.cancelOnce.Do(func() { close(job.done) })
 }
 
 type ProblemInsights struct {
@@ -74,6 +86,8 @@ func NewSimulationJob(id string, simulation *Simulation, problem problem.Problem
 		PauseAckChan:  make(chan struct{}, 1),
 		ResumeChan:    make(chan struct{}, 1),
 		ResumeAckChan: make(chan struct{}, 1),
+
+		done: make(chan struct{}),
 
 		problem: problem,
 	}

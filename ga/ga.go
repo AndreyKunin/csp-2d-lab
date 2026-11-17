@@ -3,10 +3,14 @@ package ga
 import (
 	"csp2d/problem"
 	"csp2d/util"
+	"errors"
 	"math"
 	"math/rand"
 	"time"
 )
+
+// ErrSimulationCancelled is returned by Simulate when the job was deleted.
+var ErrSimulationCancelled = errors.New("simulation cancelled")
 
 func Simulate(job *SimulationJob) error {
 	simulation := job.getSimulation()
@@ -46,6 +50,8 @@ func Simulate(job *SimulationJob) error {
 
 	for !terminationCondition(simulation) {
 		select {
+		case <-job.done:
+			return ErrSimulationCancelled
 		case <-job.PauseChan:
 			job.UpdateJobStatus(StatusPaused, nil)
 			util.Info.Printf("Simulation %s paused at epoch %d", job.id, simulation.State.CurrentEpoch.EpochNumber)
@@ -56,6 +62,8 @@ func Simulate(job *SimulationJob) error {
 				job.UpdateJobStatus(StatusRunning, nil)
 				util.Info.Printf("Simulation %s resumed", job.id)
 				job.ResumeAckChan <- struct{}{}
+			case <-job.done:
+				return ErrSimulationCancelled
 			}
 		default:
 		}
