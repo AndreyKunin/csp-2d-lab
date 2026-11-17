@@ -254,7 +254,7 @@ func TestManagerUnknownID(t *testing.T) {
 	}
 	_, checks["status"] = m.GetSimulationStatus(id)
 	_, checks["statistics"] = m.GetSimulationStatistics(id)
-	_, checks["problem"] = m.GetSimulationProblem(id)
+	_, checks["result"] = m.GetSimulationResult(id)
 	_, checks["delete"] = m.DeleteSimulation(id)
 	checks["configure"] = m.ConfigureSimulation(id, params(6, 2, 1, 1000))
 	for name, err := range checks {

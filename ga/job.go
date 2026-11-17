@@ -2,6 +2,7 @@ package ga
 
 import (
 	"csp2d/problem"
+	"csp2d/util"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -60,7 +61,21 @@ type SimulationJob struct {
 
 	problem problem.Problem
 
+	// The snapshot HTTP readers see, guarded by mu. The job goroutine publishes it
+	// at the end of every epoch (publish). Readers never touch the live
+	// simulation, population or problem, which only the job goroutine writes.
+	published *Simulation      // copies of Parameters and State
+	insights  *ProblemInsights // copies of the elites' fitness vectors
+	result    any              // ResultSnapshotter output, or nil
+
 	mu sync.RWMutex
+}
+
+// ResultSnapshotter is implemented by problems that can describe their current
+// elites as an immutable value safe to serialise on another goroutine. Simulate
+// calls it on the job goroutine at the end of every epoch.
+type ResultSnapshotter interface {
+	SnapshotResult() (any, error)
 }
 
 func (job *SimulationJob) touch(now time.Time) { job.lastAccess.Store(now.UnixNano()) }
@@ -109,7 +124,73 @@ func NewSimulationJob(id string, simulation *Simulation, problem problem.Problem
 		problem: problem,
 	}
 	job.touch(job.createdAt)
+	job.published = copySimulation(simulation)
+	job.insights = &ProblemInsights{}
 	return job
+}
+
+// copySimulation returns a copy of the parameters and state that shares no
+// memory with simulation (the window's epoch list, which is not serialised, is
+// left out).
+func copySimulation(simulation *Simulation) *Simulation {
+	if simulation == nil {
+		return &Simulation{}
+	}
+	c := &Simulation{}
+	if simulation.Parameters != nil {
+		p := *simulation.Parameters
+		c.Parameters = &p
+	}
+	if simulation.State != nil {
+		st := *simulation.State
+		st.CurrentWindow.Epochs = nil
+		c.State = &st
+	}
+	return c
+}
+
+// publish replaces the snapshot. It must run on the job goroutine, between
+// epochs, while nothing else writes the simulation or the population.
+func (job *SimulationJob) publish(simulation *Simulation, population *problem.Population) {
+	published := copySimulation(simulation)
+	insights := &ProblemInsights{}
+	if population != nil {
+		insights.SelectedSpecies = make([][]float64, 0, len(population.Selected))
+		for i, individual := range population.Selected {
+			vector := append([]float64(nil), individual.GetFitnessVector()...)
+			insights.SelectedSpecies = append(insights.SelectedSpecies, vector)
+			if i == 0 {
+				insights.BestFitnessVector = vector
+			}
+		}
+	}
+	var result any
+	snapshotter, hasResult := job.problem.(ResultSnapshotter)
+	hasResult = hasResult && population != nil // no elites before the first population
+	if hasResult {
+		r, err := snapshotter.SnapshotResult()
+		if err != nil {
+			util.Warning.Printf("[job=%s] result snapshot failed: %v", job.id, err)
+			hasResult = false
+		}
+		result = r
+	}
+
+	job.mu.Lock()
+	defer job.mu.Unlock()
+	job.published = published
+	job.insights = insights
+	if hasResult {
+		job.result = result
+	}
+}
+
+// snapshot returns the last published statistics. The values are never
+// modified after publication, so callers may read them without a lock.
+func (job *SimulationJob) snapshot() (*Simulation, *ProblemInsights, any) {
+	job.mu.RLock()
+	defer job.mu.RUnlock()
+	return job.published, job.insights, job.result
 }
 
 func (job *SimulationJob) GetStatus() SimulationJobStatus {
@@ -151,6 +232,10 @@ func (job *SimulationJob) UpdateSimulationParameters(parameters *Parameters) err
 
 	job.simulation.Parameters = parameters
 	job.updatedAt = time.Now()
+	// The job is paused, so no epoch will publish the new parameters until it is
+	// resumed: publish them now, keeping the published state.
+	p := *parameters
+	job.published = &Simulation{Parameters: &p, State: job.published.State}
 
 	return nil
 }
@@ -160,32 +245,4 @@ func (job *SimulationJob) getSimulation() *Simulation {
 	defer job.mu.Unlock()
 
 	return job.simulation
-}
-
-func (job *SimulationJob) getProblemStats() *ProblemInsights {
-	job.mu.Lock()
-	defer job.mu.Unlock()
-
-	result := ProblemInsights{
-		BestFitnessVector: nil,
-		SelectedSpecies:   nil,
-	}
-
-	population := job.problem.GetPopulation()
-	if population == nil {
-		return &result
-	}
-	selectedSpecies := population.Selected
-	var selectedVectors = make([][]float64, 0, len(selectedSpecies))
-	var bestVector []float64 = nil
-	for i, individual := range selectedSpecies {
-		selectedVectors = append(selectedVectors, individual.GetFitnessVector())
-		if i == 0 {
-			bestVector = individual.GetFitnessVector()
-		}
-	}
-	result.BestFitnessVector = bestVector
-	result.SelectedSpecies = selectedVectors
-
-	return &result
 }

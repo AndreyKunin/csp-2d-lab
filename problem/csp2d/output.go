@@ -17,6 +17,12 @@ type Response struct {
 	Solutions []Solution `json:"solutions"`
 }
 
+// SnapshotResult implements ga.ResultSnapshotter: the response holds only
+// strings and copied numbers, so it is safe to serialise while the job runs on.
+func (p *Csp2dProblemImpl) SnapshotResult() (any, error) {
+	return NewResponse(p)
+}
+
 func NewResponse(problem Csp2dProblem) (*Response, error) {
 	var solutions []Solution
 	population := problem.GetPopulation()

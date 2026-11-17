@@ -32,7 +32,7 @@ Feature: Simulation results
     Then the server is healthy
 
   # A large population makes the initial population take a while to build.
-  @FT-RES-06 @pending
+  @FT-RES-06
   Scenario: Result requested before the first epoch
     Given a running simulation for fixture "D15-large-150" with parameters:
       | populationSize.min | 3000 |

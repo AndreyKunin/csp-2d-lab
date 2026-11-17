@@ -35,6 +35,8 @@ func Simulate(job *SimulationJob) error {
 		},
 	}
 
+	job.publish(simulation, nil)
+
 	var eliteCount = simulation.Parameters.EliteCount
 	err := job.problem.NewPopulation(simulation.Parameters.PopulationSize, eliteCount, rnd)
 	if err != nil {
@@ -153,6 +155,9 @@ func Simulate(job *SimulationJob) error {
 		}
 
 		adaptParameters(simulation.State, simulation.Parameters)
+
+		// The only point where HTTP readers get new data (see SimulationJob.publish).
+		job.publish(simulation, population)
 
 		//debug code
 		epochs++

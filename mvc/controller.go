@@ -174,15 +174,15 @@ func (app *WebApp) GetSimulationStatus(c echo.Context) error {
 func (app *WebApp) GetSimulationResult(c echo.Context) error {
 	id := c.Param("id")
 
-	problem, err := app.SimulationManager.GetSimulationProblem(id)
+	// The snapshot published by the job goroutine; the live problem is never read here.
+	snapshot, err := app.SimulationManager.GetSimulationResult(id)
 	if err != nil {
 		util.Warning.Println(err)
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
-	response, err := csp2d.NewResponse(problem.(csp2d.Csp2dProblem))
-	if err != nil {
-		util.Warning.Println(err)
-		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	response, ok := snapshot.(*csp2d.Response)
+	if !ok { // nothing published yet
+		response = &csp2d.Response{}
 	}
 
 	if response.Solutions != nil && len(response.Solutions) > 0 {

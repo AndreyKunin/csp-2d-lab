@@ -37,7 +37,9 @@ type SimulationManager interface {
 	ResumeSimulation(id string) error
 	GetSimulationStatus(id string) (SimulationJobStatus, error)
 	GetSimulationStatistics(id string) (SimulationJobStatus, error)
-	GetSimulationProblem(id string) (problem.Problem, error)
+	// GetSimulationResult returns the problem's last published result snapshot
+	// (see ResultSnapshotter), or nil if none has been published yet.
+	GetSimulationResult(id string) (any, error)
 	DeleteSimulation(id string) (SimulationJobStatus, error)
 	ConfigureSimulation(id string, parameters *Parameters) error
 }
@@ -233,19 +235,18 @@ func (sm *SimulationManagerImpl) GetSimulationStatistics(id string) (SimulationJ
 		return SimulationJobStatus{}, fmt.Errorf("simulation %s not found", id)
 	}
 	stats := job.GetStatus()
-	stats.Statistics = job.getSimulation()
-	stats.Problem = job.getProblemStats()
+	stats.Statistics, stats.Problem, _ = job.snapshot()
 
 	return stats, nil
 }
 
-func (sm *SimulationManagerImpl) GetSimulationProblem(id string) (problem.Problem, error) {
+func (sm *SimulationManagerImpl) GetSimulationResult(id string) (any, error) {
 	job, exists := sm.lookup(id)
 	if !exists {
 		return nil, fmt.Errorf("simulation %s not found", id)
 	}
-
-	return job.problem, nil
+	_, _, result := job.snapshot()
+	return result, nil
 }
 
 func (sm *SimulationManagerImpl) DeleteSimulation(id string) (SimulationJobStatus, error) {
