@@ -16,3 +16,7 @@ defaults:
     maxRate: 0.995
     maxEpochsCount: 20000
     windowSize: 50
+# Job housekeeping: same as application.yaml.
+jobs:
+  maxActiveJobs: 0
+  idleTimeout: 10m

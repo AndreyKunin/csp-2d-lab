@@ -14,3 +14,12 @@ defaults:
     maxRate: 0.995
     maxEpochsCount: 20000
     windowSize: 50
+
+# Job housekeeping. Missing or 0 values select the defaults.
+jobs:
+  # Unfinished (running or paused) jobs allowed at once; further starts get HTTP 429.
+  # 0 = number of CPUs (GOMAXPROCS), negative = unlimited.
+  maxActiveJobs: 0
+  # A job no client has polled for this long is stopped and removed, whatever its status.
+  # 0 = 10m, negative = never.
+  idleTimeout: 10m

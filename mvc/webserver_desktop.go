@@ -24,7 +24,7 @@ type WebApp struct {
 func StartWebAppEmbedded(configuration *Configuration, staticFiles fs.FS, ln net.Listener, port int, ctx context.Context) {
 	webApp := WebApp{
 		Configuration:     *configuration,
-		SimulationManager: ga.NewSimulationManager(),
+		SimulationManager: ga.NewSimulationManagerWithLimits(ctx, configuration.Limits()),
 	}
 
 	e := echo.New()

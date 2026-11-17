@@ -16,3 +16,8 @@ defaults:
     maxRate: 0.995
     maxEpochsCount: 200
     windowSize: 10
+
+# Job housekeeping: small values so FT-RSC-05 / FT-RSC-06 observe them quickly.
+jobs:
+  maxActiveJobs: 8
+  idleTimeout: 10s

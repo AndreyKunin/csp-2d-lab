@@ -5,6 +5,7 @@ import (
 	"csp2d/problem/csp2d"
 	"csp2d/util"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -37,6 +38,10 @@ func (app *WebApp) StartSimulation(c echo.Context) error {
 	problem := csp2d.NewCsp2dProblem(inputs, constraints)
 
 	job, err := app.SimulationManager.StartSimulation(simulation, problem)
+	if errors.Is(err, ga.ErrTooManyJobs) {
+		util.Warning.Println(err)
+		return echo.NewHTTPError(http.StatusTooManyRequests, err.Error())
+	}
 	if err != nil {
 		util.Warning.Println(err)
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())

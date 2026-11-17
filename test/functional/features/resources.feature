@@ -40,7 +40,7 @@ Feature: Server resources
     And the epoch number increases within 10 seconds
     Then the job reaches at least 200 epochs per second
 
-  @FT-RSC-05 @resource @pending
+  @FT-RSC-05 @resource
   Scenario: Abandoned jobs are cleaned up
     Given a server started with config "fast"
     And a running simulation for fixture "D13-mixed-20" with maxEpochsCount 5
@@ -48,7 +48,7 @@ Feature: Server resources
     When I wait 30 seconds
     Then the simulation no longer exists
 
-  @FT-RSC-06 @resource @pending
+  @FT-RSC-06 @resource
   Scenario: The number of concurrent jobs is limited
     Given a server started with config "fast"
     When I start 50 long-running simulations for fixture "D13-mixed-20"

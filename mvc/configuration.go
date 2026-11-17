@@ -2,9 +2,11 @@ package mvc
 
 import (
 	"bytes"
+	"csp2d/ga"
 	"csp2d/util"
 	"fmt"
 	"os"
+	"time"
 
 	"gopkg.in/yaml.v2"
 )
@@ -18,6 +20,17 @@ type Configuration struct {
 	Defaults struct {
 		SimulationParameters SimulationParameters `yaml:"simulationParameters"`
 	} `yaml:"defaults"`
+	// Jobs: housekeeping limits; zero or missing values select the defaults
+	// (see ga.Limits).
+	Jobs struct {
+		MaxActiveJobs int           `yaml:"maxActiveJobs"`
+		IdleTimeout   time.Duration `yaml:"idleTimeout"`
+	} `yaml:"jobs"`
+}
+
+// Limits returns the job housekeeping limits.
+func (c *Configuration) Limits() ga.Limits {
+	return ga.Limits{MaxActiveJobs: c.Jobs.MaxActiveJobs, IdleTimeout: c.Jobs.IdleTimeout}
 }
 
 func GetConfiguration(configFile string) *Configuration {

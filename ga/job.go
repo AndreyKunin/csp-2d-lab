@@ -4,6 +4,7 @@ import (
 	"csp2d/problem"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -53,10 +54,18 @@ type SimulationJob struct {
 	// controlMu serialises pause/resume calls on this job.
 	controlMu sync.Mutex
 
+	// lastAccess is the time (UnixNano) of the last API lookup of this job. The
+	// manager's sweeper removes jobs whose last access is too old.
+	lastAccess atomic.Int64
+
 	problem problem.Problem
 
 	mu sync.RWMutex
 }
+
+func (job *SimulationJob) touch(now time.Time) { job.lastAccess.Store(now.UnixNano()) }
+
+func (job *SimulationJob) lastAccessTime() time.Time { return time.Unix(0, job.lastAccess.Load()) }
 
 // cancel asks the job's goroutine to stop. Safe to call more than once and after
 // the job has finished.
@@ -82,7 +91,7 @@ type SimulationJobStatus struct {
 }
 
 func NewSimulationJob(id string, simulation *Simulation, problem problem.Problem) *SimulationJob {
-	return &SimulationJob{
+	job := &SimulationJob{
 		id:         id,
 		simulation: simulation,
 		status:     StatusRunning,
@@ -99,6 +108,8 @@ func NewSimulationJob(id string, simulation *Simulation, problem problem.Problem
 
 		problem: problem,
 	}
+	job.touch(job.createdAt)
+	return job
 }
 
 func (job *SimulationJob) GetStatus() SimulationJobStatus {
