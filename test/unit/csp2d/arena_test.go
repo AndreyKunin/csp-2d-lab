@@ -42,7 +42,8 @@ func TestPostfixArenaOverflow(t *testing.T) {
 	}
 }
 
-// UT-ARN-03 / UT-ARN-04: AllocFilled copies; Reset rewinds and clears.
+// UT-ARN-03 / UT-ARN-04: AllocFilled copies; Reset rewinds, so the next
+// allocation reuses the same memory.
 func TestPostfixArenaFilledAndReset(t *testing.T) {
 	a := csp2d.NewPostfixArena("t", 8)
 	src := []int{5, 6, 7}
@@ -58,13 +59,29 @@ func TestPostfixArenaFilledAndReset(t *testing.T) {
 	if used, _, _ := a.Stats(); used != 0 {
 		t.Fatalf("used %d after Reset", used)
 	}
-	if !equalInts(cp, []int{0, 0, 0}) {
-		t.Fatalf("Reset must clear the used region, got %v", cp)
+	_ = a.AllocFilled([]int{8, 9, 10})
+	if !equalInts(cp, []int{8, 9, 10}) {
+		t.Fatalf("Reset did not rewind: the next allocation took other memory (%v)", cp)
+	}
+}
+
+// UT-ARN-28: Reset only rewinds the cursor: it does not write the used region,
+// so recycling an arena costs O(1) whatever its size.
+func TestArenaResetDoesNotWriteBuffer(t *testing.T) {
+	a := csp2d.NewPostfixArena("t", 64)
+	defer a.Release()
+	stale := a.AllocFilled([]int{5, 6, csp2d.NumS})
+	a.Reset()
+	if !equalInts(stale, []int{5, 6, csp2d.NumS}) {
+		t.Fatalf("Reset wrote the used region: %v", stale)
+	}
+	if used, _, _ := a.Stats(); used != 0 {
+		t.Fatalf("cursor %d after Reset", used)
 	}
 }
 
 // UT-ARN-05: generation lifetime contract — a slice allocated in epoch e is
-// intact after one rotation and reused after two.
+// intact after one rotation and its memory is handed out again after two.
 func TestArenaGenerationLifetime(t *testing.T) {
 	ar := csp2d.NewArena(5, 4, 1)
 	s := ar.GenAlloc([]int{1, 2, 3})
@@ -73,8 +90,9 @@ func TestArenaGenerationLifetime(t *testing.T) {
 		t.Fatalf("slice changed after one rotation: %v", s)
 	}
 	ar.RotateGenerations()
-	if equalInts(s, []int{1, 2, 3}) {
-		t.Fatal("slice should be released (cleared) after two rotations")
+	_ = ar.GenAlloc([]int{7, 8, 9})
+	if !equalInts(s, []int{7, 8, 9}) {
+		t.Fatalf("memory not reused after two rotations: %v", s)
 	}
 }
 

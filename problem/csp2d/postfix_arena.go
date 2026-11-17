@@ -72,12 +72,10 @@ func (a *PostfixArena) Demand() int {
 	return a.cursor + a.overflowInts
 }
 
+// Reset frees every slice allocated since the last Reset by rewinding the
+// cursor. It does not touch the buffer: every allocation is written before it
+// is read (Alloc returns len 0), so the old values are never observed.
 func (a *PostfixArena) Reset() {
-	// Zero out for safety: any stale slices that someone forgot will read zeros
-	// instead of stale data, surfacing bugs faster.
-	for i := 0; i < a.cursor; i++ {
-		a.buf[i] = 0
-	}
 	a.cursor = 0
 	a.overflowInts = 0
 }
