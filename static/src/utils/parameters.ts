@@ -39,25 +39,31 @@ export function getInitialParameters(defaultParameters: SimulationParameters): P
             tooltip: 'Mutation rate is the probability that a single element of the solution will be altered during the creation of a new offspring solution.',
         },
         {
-            index: 4, key: 'minRate',
+            index: 4, key: 'crossoverRate',
+            displayName: 'Crossover rate',
+            value: defaultParameters.crossoverRate?.toString() || '',
+            tooltip: 'Share of the non-elite offspring made by crossover, from 0 (exclusive) to 1. The rest are copies of tournament-selected individuals, changed by mutation only.',
+        },
+        {
+            index: 5, key: 'minRate',
             displayName: 'Minimum rate allowed',
             value: defaultParameters.minRate?.toString() || '',
             tooltip: 'Lower bound of the Crossover and Mutation Rate. Some of problems tend to raise the exploitation undefinitely that leads to convergence to local optima. This parameter prevents that.',
         },
         {
-            index: 5, key: 'maxRate',
+            index: 6, key: 'maxRate',
             displayName: 'Maximum rate allowed',
             value: defaultParameters.maxRate?.toString() || '',
             tooltip: 'Upper bound of the Crossover and Mutation Rate. Some of problems tend to raise the exploration undefinitely that leads to random search. This parameter prevents that.',
         },
         {
-            index: 6, key: 'maxEpochsCount',
+            index: 7, key: 'maxEpochsCount',
             displayName: 'Number of generations',
             value: defaultParameters.maxEpochsCount?.toString() || '',
             tooltip: 'Maximum nimber of epochs (generations) in the simulation. Simulation is a process that never halts until manually stopped. We can auto-stop the process when it reaches the maximum number of epochs.',
         },
         {
-            index: 7, key: 'windowSize',
+            index: 8, key: 'windowSize',
             displayName: 'Window size',
             value: defaultParameters.windowSize?.toString() || '',
             tooltip: 'Adaptive algorithm uses derivative metrics to adjust parameters. But fitness function is very volatile over time, so we use a sliding average window to make these metrics smooth.',
@@ -81,22 +87,27 @@ export function getRuntimeParameters(runtimeParameters?: SimulationRuntimeParame
             value: runtimeParameters.mutationRate.toString() || '',
         },
         {
-            index: 2, key: 'minRate',
+            index: 2, key: 'crossoverRate',
+            displayName: 'Crossover rate',
+            value: runtimeParameters.crossoverRate.toString() || '',
+        },
+        {
+            index: 3, key: 'minRate',
             displayName: 'Minimum rate allowed',
             value: runtimeParameters.minRate.toString() || '',
         },
         {
-            index: 3, key: 'maxRate',
+            index: 4, key: 'maxRate',
             displayName: 'Maximum rate allowed',
             value: runtimeParameters.maxRate.toString() || '',
         },
         {
-            index: 4, key: 'maxEpochsCount',
+            index: 5, key: 'maxEpochsCount',
             displayName: 'Number of generations',
             value: runtimeParameters.maxEpochsCount.toString() || '',
         },
         {
-            index: 5, key: 'windowSize',
+            index: 6, key: 'windowSize',
             displayName: 'Window size',
             value: runtimeParameters.windowSize.toString() || '',
         }
@@ -110,6 +121,7 @@ export function getSimulationParameters(items: PropertyItem[]) {
     const parameters: SimulationParameters = {
         eliteCount: Number(propertyMap.get('eliteCount')),
         mutationRate: Number(propertyMap.get('mutationRate')),
+        crossoverRate: Number(propertyMap.get('crossoverRate')),
         minRate: Number(propertyMap.get('minRate')),
         maxRate: Number(propertyMap.get('maxRate')),
         maxEpochsCount: Number(propertyMap.get('maxEpochsCount')),

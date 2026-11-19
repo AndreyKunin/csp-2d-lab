@@ -303,6 +303,8 @@ func (w *World) reportedParameterIs(key, value string) error {
 		got = float64(p.EliteCount)
 	case "mutationRate":
 		got = p.MutationRate
+	case "crossoverRate":
+		got = p.CrossoverRate
 	case "minRate":
 		got = p.MinRate
 	case "maxRate":

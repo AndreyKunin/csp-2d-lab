@@ -67,3 +67,7 @@ static/index.html
 *.secret
 secrets/
 /scripts.txt
+
+# ── Internal ───────────────────────────────────────────────────
+test/experiment/
+CLAUDE.md

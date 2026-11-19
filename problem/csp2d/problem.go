@@ -618,7 +618,7 @@ func (p *Csp2dProblemImpl) subtreeCrossover(parent1, parent2 *Csp2dIndividualImp
 
 // cloneRetries bounds how often graftSubtree re-picks the graft point and
 // operator when the child equals the recipient.
-const cloneRetries = 4
+var cloneRetries, donorFraction = 4, 0.5 // donorFraction: largest donor, as a share of the parts
 
 // graftSubtree appends to dst a child of recipient that carries a subtree of
 // donor:
@@ -656,7 +656,7 @@ func (p *Csp2dProblemImpl) graftSubtree(recipient, donor []int, rnd *rand.Rand, 
 // with 2 .. max(2, n/2) leaves. Every tree with 2 or more leaves has one: an
 // operator over two leaves.
 func (p *Csp2dProblemImpl) pickDonorSubtree(postfix []int, rnd *rand.Rand) (start, end int) {
-	maxLeaves := max(2, (len(postfix)/2+1)/2)
+	maxLeaves := max(2, int(donorFraction*float64(len(postfix)/2+1)))
 	leaves := p.arena.crossoverLeaves[:0] // leaf count of each pending subtree
 	ends := p.arena.crossoverEnds[:0]     // operator positions that qualify
 	for i, id := range postfix {
@@ -739,4 +739,10 @@ func samePostfix(a, b []int) bool {
 		}
 	}
 	return true
+}
+
+// CopyIndividual returns a copy of individual whose postfix lives in the
+// generation arena (ga copies the slots that crossover skips).
+func (p *Csp2dProblemImpl) CopyIndividual(individual problem.Individual) problem.Individual {
+	return newIndividual(p.arena.GenAlloc(individual.(*Csp2dIndividualImpl).postfix))
 }

@@ -8,4 +8,7 @@ type Parameters struct {
 	PopulationSize int     `json:"populationSize"` // Population Size
 	MaxEpochsCount int     `json:"maxEpochsCount"` // Maximum number of epochs
 	WindowSize     int     `json:"windowSize"`     // Window size
+	// CrossoverRate is the share of the non-elite slots filled by crossover; the
+	// rest are copies of selected individuals, left to mutation. 0 means 1 (all).
+	CrossoverRate float64 `json:"crossoverRate"`
 }

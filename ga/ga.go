@@ -14,7 +14,7 @@ var ErrSimulationCancelled = errors.New("simulation cancelled")
 
 func Simulate(job *SimulationJob) error {
 	simulation := job.getSimulation()
-	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
+	rnd := rand.New(rand.NewSource(job.randomSeed()))
 
 	simulation.State = &State{
 		CurrentEpoch: EpochState{
@@ -85,7 +85,7 @@ func Simulate(job *SimulationJob) error {
 		var species = *population.Species
 		var size = simulation.Parameters.PopulationSize
 
-		var crossoverCount = size - eliteCount
+		var crossoverCount = crossoverSlots(simulation.Parameters.CrossoverRate, size-eliteCount)
 
 		var eliteSet = make([]problem.Individual, 0, eliteCount)
 		var crossoverSet = make([]*problem.Individual, 0, crossoverCount)
@@ -105,7 +105,7 @@ func Simulate(job *SimulationJob) error {
 		}
 
 		// Tournament selection
-		tournamentSize := 3 // todo: make configurable from UI; Typical values: 2–5
+		tournamentSize := tournamentK
 		for len(crossoverSet) < crossoverCount {
 			bestIdx := tournamentSelect(size, tournamentSize, rnd)
 			crossoverSet = append(crossoverSet, &species[bestIdx])
@@ -116,7 +116,7 @@ func Simulate(job *SimulationJob) error {
 		epochNumber := simulation.State.CurrentEpoch.EpochNumber
 
 		// each 2 parents produce 2 offsprings but remain immutable
-		newGeneration, failuresCrossover, err1 := job.problem.Crossover(crossoverSet, rnd)
+		newGeneration, failuresCrossover, err1 := job.reproduce(species, crossoverSet, size-eliteCount-crossoverCount, tournamentSize, rnd)
 		if err1 != nil {
 			return err1
 		}
@@ -236,4 +236,41 @@ func adaptParameters(state *State, parameters *Parameters) {
 	if state.ConvergedSince > 0 { // Converged to the minimum
 		parameters.MaxEpochsCount = state.CurrentEpoch.EpochNumber
 	}
+}
+
+// tournamentK is the tournament size of the selection: 5, measured on G060
+// against 2 and 3 (GA-02). A variable so the convergence experiments can vary
+// it (test hooks).
+var tournamentK = 5
+
+// crossoverSlots returns how many of the n non-elite slots are filled by
+// crossover: all of them unless 0 < rate < 1.
+func crossoverSlots(rate float64, n int) int {
+	if rate <= 0 || rate >= 1 {
+		return n
+	}
+	return int(math.Round(rate * float64(n)))
+}
+
+// reproduce returns the offspring of the crossover set followed by copies of
+// `copies` tournament-selected individuals: the slots that crossover skips
+// (CrossoverRate < 1) are left to mutation alone. A copy takes its own memory
+// (CopyIndividual), because the parents' memory is released at the end of the
+// epoch.
+func (job *SimulationJob) reproduce(species []problem.Individual, crossoverSet []*problem.Individual, copies, k int, rnd *rand.Rand) ([]*problem.Individual, int, error) {
+	offspring, failures, err := job.problem.Crossover(crossoverSet, rnd)
+	if err != nil || copies <= 0 {
+		return offspring, failures, err
+	}
+	copier, ok := job.problem.(interface {
+		CopyIndividual(problem.Individual) problem.Individual
+	})
+	if !ok {
+		return nil, failures, errors.New("crossoverRate < 1 needs a problem that can copy individuals")
+	}
+	for i := 0; i < copies; i++ {
+		c := copier.CopyIndividual(species[tournamentSelect(len(species), k, rnd)])
+		offspring = append(offspring, &c)
+	}
+	return offspring, failures, nil
 }

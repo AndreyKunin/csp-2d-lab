@@ -41,3 +41,9 @@ func (state *State) ComputeWindowStateForTest() {
 
 // JobForTest gives tests access to a job's simulation (for driving Simulate).
 func (job *SimulationJob) SimulationForTest() *Simulation { return job.getSimulation() }
+
+// SetSeedForTest fixes the seed of the job's random source (before Simulate).
+func (job *SimulationJob) SetSeedForTest(seed int64) { job.seed = seed }
+
+// SetTournamentSizeForTest sets the tournament size of every job (experiments).
+func SetTournamentSizeForTest(k int) { tournamentK = k }

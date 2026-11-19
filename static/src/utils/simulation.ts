@@ -49,6 +49,7 @@ export interface SimulationParameters {
     populationSize?: PopulationSize;
     eliteCount?: number;
     mutationRate?: number;
+    crossoverRate?: number;
     maxRate?: number;
     minRate?: number;
     maxEpochsCount?: number;
@@ -60,6 +61,7 @@ export interface SimulationRuntimeParameters {
     populationSize: number;
     eliteCount: number;
     mutationRate: number;
+    crossoverRate: number;
     maxRate: number;
     minRate: number;
     maxEpochsCount: number;
@@ -102,6 +104,7 @@ export class Simulation {
         );
 
         this.checkRate("Mutation rate", errors, this.initialParameters.mutationRate);
+        this.checkCrossoverRate(errors, this.initialParameters.crossoverRate);
         this.checkRate("Minimum rate", errors, this.initialParameters.minRate);
         this.checkRate("Maximum rate", errors, this.initialParameters.maxRate);
 
@@ -112,6 +115,17 @@ export class Simulation {
         );
 
         return errors;
+    }
+
+    // The crossover rate may be 1 (every non-elite slot is filled by crossover).
+    private checkCrossoverRate(errors: string[], value?: number) {
+        if (value === undefined || isNaN(value)) {
+            errors.push('Invalid Crossover rate value.');
+        } else if (value <= 0) {
+            errors.push('Crossover rate must be greater than 0.');
+        } else if (value > 1) {
+            errors.push('Crossover rate cannot be greater than 1.');
+        }
     }
 
     private checkRate(name: string, errors: string[], value?: number) {

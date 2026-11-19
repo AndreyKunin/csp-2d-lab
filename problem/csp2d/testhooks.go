@@ -276,3 +276,9 @@ func (p *Csp2dProblemImpl) DecodeForestForTest(postfix []int) (int, error) {
 	forest, err := p.decodeForest(postfix)
 	return len(forest), err
 }
+
+// SetSearchConstantsForTest sets the search constants of every problem
+// (experiments).
+func SetSearchConstantsForTest(repair, flip, retries int, donor float64) {
+	repairWeight, flipWeight, cloneRetries, donorFraction = repair, flip, retries, donor
+}

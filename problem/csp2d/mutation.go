@@ -54,7 +54,7 @@ func (p *Csp2dProblemImpl) Mutation(mutationRate float64, mutationSet []*problem
 		// only once it is kept (MEM-02).
 
 		// 1) Try "eliminate-and-repair"
-		var weight = 3
+		var weight = repairWeight
 		child, improved, err := p.mutateEliminateAndRepair(parent, rnd)
 		if err != nil {
 			return totalMutations, totalWeight, failures, err
@@ -71,7 +71,7 @@ func (p *Csp2dProblemImpl) Mutation(mutationRate float64, mutationSet []*problem
 		}
 
 		// 2) Fallback: critical operator flip
-		weight = 1
+		weight = flipWeight
 		if !mutated {
 			child, improved, err = p.mutateCriticalOperatorFlip(parent, rnd)
 			if err != nil {
@@ -621,3 +621,7 @@ func (p *Csp2dProblemImpl) subtreeSpan(postfix []int, end int) int {
 	}
 	return 0
 }
+
+// Budget weights of the accepted constructive mutations. Variables so the
+// convergence experiments can vary them (test hooks).
+var repairWeight, flipWeight = 3, 1

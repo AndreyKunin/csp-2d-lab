@@ -61,6 +61,10 @@ type SimulationJob struct {
 
 	problem problem.Problem
 
+	// seed of the job's random source; 0 means the start time (experiments set it
+	// through the test hooks, so parallel runs differ and runs can be repeated).
+	seed int64
+
 	// The snapshot HTTP readers see, guarded by mu. The job goroutine publishes it
 	// at the end of every epoch (publish). Readers never touch the live
 	// simulation, population or problem, which only the job goroutine writes.
@@ -253,4 +257,13 @@ func (job *SimulationJob) getSimulation() *Simulation {
 	defer job.mu.Unlock()
 
 	return job.simulation
+}
+
+// randomSeed returns the seed of the job's random source: the one set by the
+// test hooks, else the current time.
+func (job *SimulationJob) randomSeed() int64 {
+	if job.seed != 0 {
+		return job.seed
+	}
+	return time.Now().UnixNano()
 }

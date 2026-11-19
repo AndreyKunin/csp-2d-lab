@@ -134,6 +134,8 @@ func setParameter(p *api.Parameters, key, value string) error {
 		p.WindowSize, err = asInt()
 	case "mutationRate":
 		p.MutationRate, err = asFloat()
+	case "crossoverRate":
+		p.CrossoverRate, err = asFloat()
 	case "minRate":
 		p.MinRate, err = asFloat()
 	case "maxRate":

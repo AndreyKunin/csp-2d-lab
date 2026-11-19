@@ -25,7 +25,7 @@ func defaults(t *testing.T) mvc.SimulationParameters {
 	t.Helper()
 	var p mvc.SimulationParameters
 	body := `{"populationSize":{"min":100,"max":60000},"eliteCount":10,"mutationRate":0.07,
-	          "minRate":0.005,"maxRate":0.995,"maxEpochsCount":20000,"windowSize":50}`
+	          "minRate":0.005,"maxRate":0.995,"maxEpochsCount":20000,"windowSize":50,"crossoverRate":0.75}`
 	if err := json.Unmarshal([]byte(body), &p); err != nil {
 		t.Fatal(err)
 	}
@@ -123,6 +123,13 @@ func TestBuildParameters(t *testing.T) {
 	if p.MutationRate != 0.2 || p.WindowSize != 7 || p.EliteCount != 10 || p.MaxEpochsCount != 20000 {
 		t.Fatalf("partial override: %+v", p)
 	}
+	// GA-02: the crossover rate comes from the defaults and a request can override it.
+	if p.CrossoverRate != 0.75 {
+		t.Fatalf("default crossoverRate %v, want 0.75", p.CrossoverRate)
+	}
+	if p := decodeRequest(t, `{"parameters":{"crossoverRate":0.5}}`).BuildParameters(d, 10); p.CrossoverRate != 0.5 {
+		t.Fatalf("crossoverRate override %v, want 0.5", p.CrossoverRate)
+	}
 }
 
 // UT-CFG-01: the production configuration parses.
@@ -134,7 +141,7 @@ func TestProductionConfigurationParses(t *testing.T) {
 	}
 	cfg := mvc.GetConfigurationFromBytes(data)
 	sp := cfg.Defaults.SimulationParameters
-	if sp.PopulationSize == nil || sp.EliteCount == nil || sp.MutationRate == nil || sp.WindowSize == nil || sp.MaxEpochsCount == nil {
+	if sp.PopulationSize == nil || sp.EliteCount == nil || sp.MutationRate == nil || sp.CrossoverRate == nil || sp.WindowSize == nil || sp.MaxEpochsCount == nil {
 		t.Fatalf("missing defaults: %+v", sp)
 	}
 	if cfg.Server.StaticDir == "" {

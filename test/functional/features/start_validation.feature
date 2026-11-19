@@ -26,12 +26,14 @@ Feature: Starting a simulation
     Given a start request from fixture "D13-mixed-20"
     And the request parameter "eliteCount" is 4
     And the request parameter "mutationRate" is 0.05
+    And the request parameter "crossoverRate" is 0.5
     And the request parameter "maxEpochsCount" is 77
     And the request parameter "windowSize" is 7
     When I start the simulation
     Then the response status is 201
     And the reported parameter "eliteCount" is 4
     And the reported parameter "mutationRate" is 0.05
+    And the reported parameter "crossoverRate" is 0.5
     And the reported parameter "maxEpochsCount" is 77
     And the reported parameter "windowSize" is 7
 
@@ -44,6 +46,7 @@ Feature: Starting a simulation
     Then the response status is 201
     And the reported parameter "mutationRate" is 0.03
     And the reported parameter "eliteCount" is 5
+    And the reported parameter "crossoverRate" is 0.75
     And the reported parameter "windowSize" is 10
     And the reported parameter "maxEpochsCount" is 200
     And the reported parameter "populationSize" is 60
