@@ -4,6 +4,7 @@ package ga_test
 
 import (
 	"csp2d/ga"
+	"csp2d/problem"
 	"csp2d/test/support/fakes"
 	"csp2d/test/support/testutil"
 	"errors"
@@ -54,9 +55,6 @@ func TestCyclesAndChampionship(t *testing.T) {
 		t.Fatalf("cycles %d, championship since %d, last epoch %d; want 2, 13, 18",
 			st.Cycles, st.ChampionshipSince, st.CurrentEpoch.EpochNumber)
 	}
-	if st.StopReason != ga.StopChampionshipStagnated {
-		t.Fatalf("stop reason %q, want %q", st.StopReason, ga.StopChampionshipStagnated)
-	}
 	if p.MaxEpochsCount != 1000 {
 		t.Fatalf("maxEpochsCount changed to %d", p.MaxEpochsCount)
 	}
@@ -97,8 +95,8 @@ func TestStartOverReplacesElites(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sim.State.Cycles != 1 || sim.State.StopReason != "" {
-		t.Fatalf("cycles %d, stop reason %q; want 1 and none (the epoch cap)", sim.State.Cycles, sim.State.StopReason)
+	if sim.State.Cycles != 1 || sim.State.CurrentEpoch.EpochNumber != 11 {
+		t.Fatalf("cycles %d, last epoch %d; want 1 and 11 (the epoch cap)", sim.State.Cycles, sim.State.CurrentEpoch.EpochNumber)
 	}
 	for i, ind := range *fake.GetPopulation().Species {
 		if ind.(*fakes.Individual).Origin == "initial" {
@@ -117,9 +115,9 @@ func TestCycleCountZeroStopsAtStagnation(t *testing.T) {
 		t.Fatal(err)
 	}
 	st := sim.State
-	if st.Cycles != 0 || st.ChampionshipSince != 0 || st.CurrentEpoch.EpochNumber != 6 || st.StopReason != ga.StopStagnated {
-		t.Fatalf("cycles %d, championship %d, last epoch %d, reason %q; want 0, 0, 6, %q",
-			st.Cycles, st.ChampionshipSince, st.CurrentEpoch.EpochNumber, st.StopReason, ga.StopStagnated)
+	if st.Cycles != 0 || st.ChampionshipSince != 0 || st.CurrentEpoch.EpochNumber != 6 {
+		t.Fatalf("cycles %d, championship %d, last epoch %d; want 0, 0, 6",
+			st.Cycles, st.ChampionshipSince, st.CurrentEpoch.EpochNumber)
 	}
 }
 
@@ -133,9 +131,9 @@ func TestCycleCountOne(t *testing.T) {
 		t.Fatal(err)
 	}
 	st := sim.State
-	if st.Cycles != 1 || st.ChampionshipSince != 7 || st.CurrentEpoch.EpochNumber != 12 || st.StopReason != ga.StopChampionshipStagnated {
-		t.Fatalf("cycles %d, championship %d, last epoch %d, reason %q; want 1, 7, 12, championship",
-			st.Cycles, st.ChampionshipSince, st.CurrentEpoch.EpochNumber, st.StopReason)
+	if st.Cycles != 1 || st.ChampionshipSince != 7 || st.CurrentEpoch.EpochNumber != 12 {
+		t.Fatalf("cycles %d, championship %d, last epoch %d; want 1, 7, 12",
+			st.Cycles, st.ChampionshipSince, st.CurrentEpoch.EpochNumber)
 	}
 }
 
@@ -153,9 +151,9 @@ func TestImprovementKeepsTheCycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sim.State.Cycles != 0 || sim.State.StopReason != "" || sim.State.CurrentEpoch.EpochNumber != 40 {
-		t.Fatalf("cycles %d, reason %q, last epoch %d; want 0, none, 40",
-			sim.State.Cycles, sim.State.StopReason, sim.State.CurrentEpoch.EpochNumber)
+	if sim.State.Cycles != 0 || sim.State.CurrentEpoch.EpochNumber != 40 {
+		t.Fatalf("cycles %d, last epoch %d; want 0, 40",
+			sim.State.Cycles, sim.State.CurrentEpoch.EpochNumber)
 	}
 }
 
@@ -172,9 +170,9 @@ func TestCycleWindowOne(t *testing.T) {
 	}
 	// Cycle 1: epochs 1..2, championship: 3..4.
 	st := sim.State
-	if st.Cycles != 1 || st.ChampionshipSince != 3 || st.CurrentEpoch.EpochNumber != 4 || st.StopReason != ga.StopChampionshipStagnated {
-		t.Fatalf("cycles %d, championship %d, last epoch %d, reason %q; want 1, 3, 4, championship",
-			st.Cycles, st.ChampionshipSince, st.CurrentEpoch.EpochNumber, st.StopReason)
+	if st.Cycles != 1 || st.ChampionshipSince != 3 || st.CurrentEpoch.EpochNumber != 4 {
+		t.Fatalf("cycles %d, championship %d, last epoch %d; want 1, 3, 4",
+			st.Cycles, st.ChampionshipSince, st.CurrentEpoch.EpochNumber)
 	}
 }
 
@@ -194,9 +192,9 @@ func TestStartOverErrorPropagates(t *testing.T) {
 	}
 }
 
-// UT-GA-CY-09: the stop reason and the cycle counters reach the readers
-// (the published snapshot).
-func TestStopReasonPublished(t *testing.T) {
+// UT-GA-CY-09: the cycle counters and the final epoch of a run that ends by
+// stagnation reach the readers (the published snapshot).
+func TestCycleStatePublished(t *testing.T) {
 	m := ga.NewSimulationManager()
 	p := params(10, 2, 1000, 5)
 	p.CycleCount = 1
@@ -213,7 +211,129 @@ func TestStopReasonPublished(t *testing.T) {
 	if s == nil || s.State == nil {
 		t.Fatal("no published state")
 	}
-	if s.State.StopReason != ga.StopChampionshipStagnated || s.State.Cycles != 1 || s.State.ChampionshipSince != 7 {
-		t.Fatalf("published reason %q, cycles %d, championship %d", s.State.StopReason, s.State.Cycles, s.State.ChampionshipSince)
+	if s.State.Cycles != 1 || s.State.ChampionshipSince != 7 || s.State.CurrentEpoch.EpochNumber != 12 {
+		t.Fatalf("published cycles %d, championship %d, epoch %d; want 1, 7, 12",
+			s.State.Cycles, s.State.ChampionshipSince, s.State.CurrentEpoch.EpochNumber)
+	}
+}
+
+// searchProblem is a fake problem that records the search parameters the engine
+// passes it every epoch.
+type searchProblem struct {
+	*fakes.Problem
+	calls  int
+	repair int
+	flip   int
+	donor  float64
+}
+
+func (s *searchProblem) SetSearchParameters(repairWeight, flipWeight int, donorFraction float64) {
+	s.calls++
+	s.repair, s.flip, s.donor = repairWeight, flipWeight, donorFraction
+}
+
+// UT-GA-SP-01: the engine passes the repair weight, flip weight and donor
+// fraction to the problem every epoch, unchanged.
+func TestSearchParametersPassedEveryEpoch(t *testing.T) {
+	sp := &searchProblem{Problem: &fakes.Problem{InputsSize: 5}}
+	p := params(10, 2, 7, 1000)
+	p.RepairWeight, p.FlipWeight, p.DonorFraction = 6, 2, 0.75
+	job := ga.NewSimulationJob("test", ga.NewSimulation(p), sp)
+	var err error
+	testutil.Within(t, 10*time.Second, "Simulate", func() { err = ga.Simulate(job) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sp.calls != 7 || sp.repair != 6 || sp.flip != 2 || sp.donor != 0.75 {
+		t.Fatalf("%d calls with repair %d, flip %d, donor %v; want 7 calls with 6, 2, 0.75", sp.calls, sp.repair, sp.flip, sp.donor)
+	}
+}
+
+// UT-GA-SP-02: a reconfigured search parameter reaches the problem from the
+// next epoch on.
+func TestSearchParametersFollowConfigure(t *testing.T) {
+	sp := &searchProblem{Problem: &fakes.Problem{InputsSize: 5, EpochDelay: 2 * time.Millisecond}}
+	m := ga.NewSimulationManager()
+	p := params(10, 2, 1000000, 1000000)
+	p.RepairWeight, p.FlipWeight, p.DonorFraction = 3, 1, 0.5
+	st, err := m.StartSimulation(ga.NewSimulation(p), sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = m.DeleteSimulation(st.ID) }()
+	if err := m.PauseSimulation(st.ID); err != nil {
+		t.Fatal(err)
+	}
+	q := params(10, 2, 1000000, 1000000)
+	q.RepairWeight, q.FlipWeight, q.DonorFraction = 9, 4, 0.25
+	if err := m.ConfigureSimulation(st.ID, q); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.ResumeSimulation(st.ID); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if err := m.PauseSimulation(st.ID); err != nil {
+			t.Fatal(err)
+		}
+		if sp.repair == 9 && sp.flip == 4 && sp.donor == 0.25 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("problem still has repair %d, flip %d, donor %v; want 9, 4, 0.25", sp.repair, sp.flip, sp.donor)
+		}
+		if err := m.ResumeSimulation(st.ID); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// tournamentCounter is a fake problem that counts how many individuals reach
+// Crossover; with tournament size k, the share of the best individual among
+// the selected parents grows with k.
+type tournamentCounter struct {
+	*fakes.Problem
+	best, total int
+}
+
+func (c *tournamentCounter) Crossover(set []*problem.Individual, rnd *rand.Rand) ([]*problem.Individual, int, error) {
+	species := *c.GetPopulation().Species
+	for _, ind := range set {
+		if *ind == species[0] {
+			c.best++
+		}
+		c.total++
+	}
+	return c.Problem.Crossover(set, rnd)
+}
+
+func bestShare(t *testing.T, k int) float64 {
+	t.Helper()
+	c := &tournamentCounter{Problem: &fakes.Problem{InputsSize: 5}}
+	p := params(50, 2, 40, 1000)
+	p.TournamentSize = k
+	job := ga.NewSimulationJob("test", ga.NewSimulation(p), c)
+	job.SetSeedForTest(7)
+	var err error
+	testutil.Within(t, 10*time.Second, "Simulate", func() { err = ga.Simulate(job) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	return float64(c.best) / float64(c.total)
+}
+
+// UT-GA-SP-03: the tournament size comes from the parameters: a larger size
+// selects the best individual more often (for 50 individuals, with
+// replacement: 1-(49/50)^k of each draw: k=1 2 %, k=5 9.6 %, k=20 33 %).
+// 0 or less takes the default 5.
+func TestTournamentSizeFromParameters(t *testing.T) {
+	one, five, twenty := bestShare(t, 1), bestShare(t, 5), bestShare(t, 20)
+	if !(one < five && five < twenty) {
+		t.Fatalf("best-individual share k=1 %.3f, k=5 %.3f, k=20 %.3f; want increasing", one, five, twenty)
+	}
+	if def := bestShare(t, 0); def != five {
+		t.Fatalf("tournament size 0 gives share %.4f, want the default 5's %.4f", def, five)
 	}
 }

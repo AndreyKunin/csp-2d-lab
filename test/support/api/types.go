@@ -30,8 +30,10 @@ type Parameters struct {
 	MutationRate   *float64        `json:"mutationRate,omitempty"`
 	CrossoverRate  *float64        `json:"crossoverRate,omitempty"`
 	CycleCount     *int            `json:"cycleCount,omitempty"`
-	MaxRate        *float64        `json:"maxRate,omitempty"`
-	MinRate        *float64        `json:"minRate,omitempty"`
+	TournamentSize *int            `json:"tournamentSize,omitempty"`
+	RepairWeight   *int            `json:"repairWeight,omitempty"`
+	FlipWeight     *int            `json:"flipWeight,omitempty"`
+	DonorFraction  *float64        `json:"donorFraction,omitempty"`
 	MaxEpochsCount *int            `json:"maxEpochsCount,omitempty"`
 	WindowSize     *int            `json:"windowSize,omitempty"`
 }
@@ -60,8 +62,10 @@ type RuntimeParameters struct {
 	MutationRate   float64 `json:"mutationRate"`
 	CrossoverRate  float64 `json:"crossoverRate"`
 	CycleCount     int     `json:"cycleCount"`
-	MinRate        float64 `json:"minRate"`
-	MaxRate        float64 `json:"maxRate"`
+	TournamentSize int     `json:"tournamentSize"`
+	RepairWeight   int     `json:"repairWeight"`
+	FlipWeight     int     `json:"flipWeight"`
+	DonorFraction  float64 `json:"donorFraction"`
 	PopulationSize int     `json:"populationSize"`
 	MaxEpochsCount int     `json:"maxEpochsCount"`
 	WindowSize     int     `json:"windowSize"`
@@ -88,12 +92,8 @@ type WindowState struct {
 type State struct {
 	EpochState        EpochState  `json:"epochState"`
 	WindowState       WindowState `json:"windowState"`
-	SaturatedSince    int         `json:"saturatedSince"`
-	ConvergedSince    int         `json:"convergedSince"`
 	Cycles            int         `json:"cycles"`
 	ChampionshipSince int         `json:"championshipSince"`
-	StopReason        string      `json:"stopReason,omitempty"`
-	NewEpochSince     int         `json:"newEpochSince"`
 }
 
 type Statistics struct {

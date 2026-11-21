@@ -13,11 +13,13 @@ defaults:
     eliteCount: 5
     mutationRate: 0.07
     crossoverRate: 0.75
-    minRate: 0.005
-    maxRate: 0.995
     maxEpochsCount: 200
     windowSize: 10
     cycleCount: 10
+    tournamentSize: 5
+    repairWeight: 3
+    flipWeight: 1
+    donorFraction: 0.5
 
 # Job housekeeping: small values so FT-RSC-05 / FT-RSC-06 observe them quickly.
 jobs:

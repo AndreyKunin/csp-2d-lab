@@ -20,7 +20,6 @@ func registerCatalogueSteps(ctx *godog.ScenarioContext, w *World) {
 	ctx.Step(`^the two started jobs have different ids$`, w.twoJobsDifferentIDs)
 	ctx.Step(`^the job status is not "([^"]*)"$`, w.jobStatusIsNot)
 	ctx.Step(`^the epoch number is exactly (\d+)$`, w.epochExactly)
-	ctx.Step(`^the stop reason is "([^"]*)"$`, w.stopReasonIs)
 	ctx.Step(`^the run finished (\d+) cycles?$`, w.finishedCycles)
 	ctx.Step(`^the championship has started$`, w.championshipStarted)
 	ctx.Step(`^the championship has not started$`, w.championshipNotStarted)
@@ -455,8 +454,7 @@ func (w *World) waitSeconds(n int) error {
 	return nil
 }
 
-// Cycles and championship (ga.go): the published state's cycle counters and
-// stop reason.
+// Cycles and championship (ga.go): the published state's cycle counters.
 
 func (w *World) publishedState() (*api.State, error) {
 	st, err := w.fetchStatus()
@@ -467,17 +465,6 @@ func (w *World) publishedState() (*api.State, error) {
 		return nil, fmt.Errorf("no published state")
 	}
 	return st.Statistics.State, nil
-}
-
-func (w *World) stopReasonIs(want string) error {
-	s, err := w.publishedState()
-	if err != nil {
-		return err
-	}
-	if s.StopReason != want {
-		return fmt.Errorf("stop reason %q, want %q", s.StopReason, want)
-	}
-	return nil
 }
 
 func (w *World) finishedCycles(n int) error {

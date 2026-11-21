@@ -106,13 +106,8 @@ func Simulate(job *SimulationJob) error {
 		if window := max(simulation.Parameters.WindowSize, 1); epochNow-lastImprove >= window {
 			state := simulation.State
 			if state.ChampionshipSince > 0 || simulation.Parameters.CycleCount <= 0 {
-				if state.ChampionshipSince > 0 {
-					state.StopReason = StopChampionshipStagnated
-				} else {
-					state.StopReason = StopStagnated
-				}
-				job.publish(simulation, population) // readers see the stop reason
-				break
+				job.publish(simulation, population) // readers see the final epoch
+				break                               // the championship (or, with no cycles, the run) stagnated: the run ends
 			}
 			for i := 0; i < eliteCount; i++ {
 				savedElites = append(savedElites, detachIndividual(job.problem, species[i]))
@@ -149,7 +144,17 @@ func Simulate(job *SimulationJob) error {
 		}
 
 		// Tournament selection
-		tournamentSize := tournamentK
+		tournamentSize := simulation.Parameters.TournamentSize
+		if tournamentSize <= 0 {
+			tournamentSize = defaultTournamentSize
+		}
+
+		// The problem's search parameters may change between epochs (Configure).
+		if sp, ok := job.problem.(interface {
+			SetSearchParameters(repairWeight, flipWeight int, donorFraction float64)
+		}); ok {
+			sp.SetSearchParameters(simulation.Parameters.RepairWeight, simulation.Parameters.FlipWeight, simulation.Parameters.DonorFraction)
+		}
 		for len(crossoverSet) < crossoverCount {
 			bestIdx := tournamentSelect(size, tournamentSize, rnd)
 			crossoverSet = append(crossoverSet, &species[bestIdx])
@@ -287,13 +292,6 @@ func computeEpochState(simulation *Simulation, population *problem.Population) *
 	}
 }
 
-// Stop reasons recorded in State.StopReason when a run ends before
-// maxEpochsCount.
-const (
-	StopChampionshipStagnated = "championship stagnated"
-	StopStagnated             = "stagnated" // cycleCount 0: no cycles, no championship
-)
-
 // detachIndividual returns a copy of the individual that survives any number
 // of epochs: the problem's optional DetachIndividual (outside its memory
 // arenas), else the individual itself.
@@ -318,10 +316,9 @@ func copyIndividual(p problem.Problem, individual problem.Individual) problem.In
 	return individual
 }
 
-// tournamentK is the tournament size of the selection: 5, measured on G060
-// against 2 and 3 (GA-02). A variable so the convergence experiments can vary
-// it (test hooks).
-var tournamentK = 5
+// defaultTournamentSize is the tournament size when Parameters.TournamentSize
+// is not set: 5, measured on G060 against 2 and 3 (design.md §16.12).
+const defaultTournamentSize = 5
 
 // crossoverSlots returns how many of the n non-elite slots are filled by
 // crossover: all of them unless 0 < rate < 1.

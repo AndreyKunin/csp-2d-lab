@@ -35,11 +35,8 @@ export interface WindowState {
 export interface SimulationState {
     epochState: EpochState;
     windowState: WindowState;
-    saturatedSince: number;
-    convergedSince: number;
     cycles: number;            // finished cycles (each ends when the best stagnates for windowSize epochs)
     championshipSince: number; // epoch the championship began; 0 = not yet
-    stopReason?: string;       // why the run ended before maxEpochsCount
 }
 
 export interface SimulationStatistics {
@@ -53,11 +50,13 @@ export interface SimulationParameters {
     eliteCount?: number;
     mutationRate?: number;
     crossoverRate?: number;
-    maxRate?: number;
-    minRate?: number;
     maxEpochsCount?: number;
     windowSize?: number;
     cycleCount?: number;
+    tournamentSize?: number;
+    repairWeight?: number;
+    flipWeight?: number;
+    donorFraction?: number;
 }
 
 export interface SimulationRuntimeParameters {
@@ -66,11 +65,13 @@ export interface SimulationRuntimeParameters {
     eliteCount: number;
     mutationRate: number;
     crossoverRate: number;
-    maxRate: number;
-    minRate: number;
     maxEpochsCount: number;
     windowSize: number;
     cycleCount: number;
+    tournamentSize: number;
+    repairWeight: number;
+    flipWeight: number;
+    donorFraction: number;
 }
 
 export class Simulation {
@@ -110,8 +111,6 @@ export class Simulation {
 
         this.checkRate("Mutation rate", errors, this.initialParameters.mutationRate);
         this.checkCrossoverRate(errors, this.initialParameters.crossoverRate);
-        this.checkRate("Minimum rate", errors, this.initialParameters.minRate);
-        this.checkRate("Maximum rate", errors, this.initialParameters.maxRate);
 
         this.checkRange(
             'Window size', 'Number of generations',
@@ -120,6 +119,10 @@ export class Simulation {
         );
 
         this.checkCycleCount(errors, this.initialParameters.cycleCount);
+        this.checkWholeAtLeast('Tournament size', errors, 1, this.initialParameters.tournamentSize);
+        this.checkWholeAtLeast('Repair weight', errors, 1, this.initialParameters.repairWeight);
+        this.checkWholeAtLeast('Flip weight', errors, 1, this.initialParameters.flipWeight);
+        this.checkDonorFraction(errors, this.initialParameters.donorFraction);
 
         return errors;
     }
@@ -131,6 +134,25 @@ export class Simulation {
             errors.push('Invalid Cycles before championship value.');
         } else if (value < 0) {
             errors.push('Cycles before championship cannot be less than 0.');
+        }
+    }
+
+    private checkWholeAtLeast(name: string, errors: string[], min: number, value?: number) {
+        if (value === undefined || isNaN(value) || !Number.isInteger(value)) {
+            errors.push(`Invalid ${name} value.`);
+        } else if (value < min) {
+            errors.push(`${name} cannot be less than ${min}.`);
+        }
+    }
+
+    // The donor fraction may be 1 (a whole parent can be copied).
+    private checkDonorFraction(errors: string[], value?: number) {
+        if (value === undefined || isNaN(value)) {
+            errors.push('Invalid Donor fraction value.');
+        } else if (value <= 0) {
+            errors.push('Donor fraction must be greater than 0.');
+        } else if (value > 1) {
+            errors.push('Donor fraction cannot be greater than 1.');
         }
     }
 

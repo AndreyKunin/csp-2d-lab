@@ -73,7 +73,7 @@ export class Model {
 
     public validate(): string[] {
         const MIN_TOTAL_COUNT = 2;
-        const MAX_TOTAL_COUNT = 250;
+        const MAX_TOTAL_COUNT = 100; // hard limit on the total part count (sum of the counts); not configurable
         const MAX_MAGNITUDE = 4;
         let sheetW: Fraction | number = 0, sheetL: Fraction | number = 0;
         let totalCount: number = 0, maxValue: Fraction | number = 0,

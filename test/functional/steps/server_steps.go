@@ -192,8 +192,10 @@ type configDefaults struct {
 			MutationRate   float64 `yaml:"mutationRate"`
 			CrossoverRate  float64 `yaml:"crossoverRate"`
 			CycleCount     int     `yaml:"cycleCount"`
-			MinRate        float64 `yaml:"minRate"`
-			MaxRate        float64 `yaml:"maxRate"`
+			TournamentSize int     `yaml:"tournamentSize"`
+			RepairWeight   int     `yaml:"repairWeight"`
+			FlipWeight     int     `yaml:"flipWeight"`
+			DonorFraction  float64 `yaml:"donorFraction"`
 			MaxEpochsCount int     `yaml:"maxEpochsCount"`
 			WindowSize     int     `yaml:"windowSize"`
 		} `yaml:"simulationParameters"`
@@ -248,8 +250,10 @@ func (w *World) defaultParametersMatchConfig() error {
 	checkFloat("mutationRate", got.MutationRate, want.MutationRate)
 	checkFloat("crossoverRate", got.CrossoverRate, want.CrossoverRate)
 	checkInt("cycleCount", got.CycleCount, want.CycleCount)
-	checkFloat("minRate", got.MinRate, want.MinRate)
-	checkFloat("maxRate", got.MaxRate, want.MaxRate)
+	checkInt("tournamentSize", got.TournamentSize, want.TournamentSize)
+	checkInt("repairWeight", got.RepairWeight, want.RepairWeight)
+	checkInt("flipWeight", got.FlipWeight, want.FlipWeight)
+	checkFloat("donorFraction", got.DonorFraction, want.DonorFraction)
 	checkInt("maxEpochsCount", got.MaxEpochsCount, want.MaxEpochsCount)
 	checkInt("windowSize", got.WindowSize, want.WindowSize)
 	if len(diffs) > 0 {

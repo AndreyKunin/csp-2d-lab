@@ -4,7 +4,6 @@ package ga_test
 
 import (
 	"csp2d/ga"
-	"csp2d/test/support/testutil"
 	"math"
 	"testing"
 )
@@ -61,22 +60,4 @@ func TestComputeWindowState(t *testing.T) {
 			t.Errorf("%s = %g, want %g", name, gw[0], gw[1])
 		}
 	}
-}
-
-// UT-GA-WS-05: the "since" markers are set when their condition holds.
-func TestWindowSinceMarkers(t *testing.T) {
-	st := windowOf(ga.EpochState{EpochNumber: 4, EliteFitnessDeviation: 0, Failures: 1})
-	st.ComputeWindowStateForTest()
-	if st.ConvergedSince != 4 || st.SaturatedSince != 4 {
-		t.Fatalf("convergedSince %d saturatedSince %d, want 4 and 4", st.ConvergedSince, st.SaturatedSince)
-	}
-	t.Run("cleared when the condition stops holding", func(t *testing.T) {
-		testutil.Pending(t, "ConvergedSince/SaturatedSince are latched and never reset")
-		next := windowOf(ga.EpochState{EpochNumber: 5, EliteFitnessDeviation: 3, Failures: 0})
-		next.ConvergedSince, next.SaturatedSince = st.ConvergedSince, st.SaturatedSince
-		next.ComputeWindowStateForTest()
-		if next.ConvergedSince != 0 || next.SaturatedSince != 0 {
-			t.Fatalf("convergedSince %d saturatedSince %d after the condition cleared", next.ConvergedSince, next.SaturatedSince)
-		}
-	})
 }

@@ -1,7 +1,5 @@
 package ga
 
-import "math"
-
 // EpochState Some state metrics are actual in the single epoch only
 type EpochState struct {
 	BestFitness           float64 `json:"bestFitness"`           // Best Fitness
@@ -37,17 +35,12 @@ func (window *WindowState) addEpoch(newState *EpochState, windowSize int) {
 }
 
 type State struct {
-	CurrentEpoch   EpochState  `json:"epochState"`     // State changed each epoch
-	CurrentWindow  WindowState `json:"windowState"`    // Summary state over a sliding window
-	SaturatedSince int         `json:"saturatedSince"` // The epoch number since what the crossover set is saturated
-	ConvergedSince int         `json:"convergedSince"` // The epoch number since what the elite set is converged
-	NewEpochSince  int         `json:"newEpochSince"`  // The first epoch number in the certain era
-	// Cycles and championship (ga.go): finished cycles, the epoch the
-	// championship began (0 = not yet), and why the run ended early ("" = it
-	// did not, or it reached maxEpochsCount).
-	Cycles            int    `json:"cycles"`
-	ChampionshipSince int    `json:"championshipSince"`
-	StopReason        string `json:"stopReason,omitempty"`
+	CurrentEpoch  EpochState  `json:"epochState"`  // State changed each epoch
+	CurrentWindow WindowState `json:"windowState"` // Summary state over a sliding window
+	// Cycles and championship (ga.go): finished cycles and the epoch the
+	// championship began (0 = not yet).
+	Cycles            int `json:"cycles"`
+	ChampionshipSince int `json:"championshipSince"`
 }
 
 func (state *State) computeWindowState() {
@@ -72,10 +65,4 @@ func (state *State) computeWindowState() {
 	window.EliteFitnessDeviation = avgEliteFitnessDeviation / float64(size)
 	window.SaturationRate = float64(failures) / float64(size)
 	state.CurrentWindow = window
-	if state.SaturatedSince == 0 && window.SaturationRate > 0 {
-		state.SaturatedSince = state.CurrentEpoch.EpochNumber
-	}
-	if state.ConvergedSince == 0 && math.Abs(window.EliteFitnessDeviation) < 0.000001 {
-		state.ConvergedSince = state.CurrentEpoch.EpochNumber
-	}
 }

@@ -29,8 +29,10 @@ type SimulationParameters struct {
 	MutationRate   *float64 `json:"mutationRate"          yaml:"mutationRate"`
 	CrossoverRate  *float64 `json:"crossoverRate"         yaml:"crossoverRate"`
 	CycleCount     *int     `json:"cycleCount"            yaml:"cycleCount"`
-	MaxRate        *float64 `json:"maxRate"               yaml:"maxRate"`
-	MinRate        *float64 `json:"minRate"               yaml:"minRate"`
+	TournamentSize *int     `json:"tournamentSize"        yaml:"tournamentSize"`
+	RepairWeight   *int     `json:"repairWeight"          yaml:"repairWeight"`
+	FlipWeight     *int     `json:"flipWeight"            yaml:"flipWeight"`
+	DonorFraction  *float64 `json:"donorFraction"         yaml:"donorFraction"`
 	MaxEpochsCount *int     `json:"maxEpochsCount"        yaml:"maxEpochsCount"`
 	WindowSize     *int     `json:"windowSize"            yaml:"windowSize"`
 }
@@ -103,11 +105,17 @@ func (r *Request) buildParameters(inputsCount int, parameters SimulationParamete
 	if parameters.CycleCount != nil {
 		result.CycleCount = *parameters.CycleCount
 	}
-	if parameters.MaxRate != nil {
-		result.MaxRate = *parameters.MaxRate
+	if parameters.TournamentSize != nil {
+		result.TournamentSize = *parameters.TournamentSize
 	}
-	if parameters.MinRate != nil {
-		result.MinRate = *parameters.MinRate
+	if parameters.RepairWeight != nil {
+		result.RepairWeight = *parameters.RepairWeight
+	}
+	if parameters.FlipWeight != nil {
+		result.FlipWeight = *parameters.FlipWeight
+	}
+	if parameters.DonorFraction != nil {
+		result.DonorFraction = *parameters.DonorFraction
 	}
 	if parameters.PopulationSize != nil {
 		result.PopulationSize = int(math.Max(

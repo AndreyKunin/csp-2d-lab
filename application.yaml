@@ -11,11 +11,13 @@ defaults:
     eliteCount: 3
     mutationRate: 0.07
     crossoverRate: 0.75
-    minRate: 0.005
-    maxRate: 0.995
     maxEpochsCount: 20000
     windowSize: 50
     cycleCount: 10
+    tournamentSize: 5
+    repairWeight: 3
+    flipWeight: 1
+    donorFraction: 0.5
 
 # Job housekeeping. Missing or 0 values select the defaults.
 jobs:

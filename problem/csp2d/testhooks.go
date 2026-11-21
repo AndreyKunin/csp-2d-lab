@@ -17,7 +17,8 @@ import (
 // NewProblemForTest returns the concrete problem type (NewCsp2dProblem returns
 // the problem.Problem interface).
 func NewProblemForTest(inputs []InputDefinition, constraints *Constraints) *Csp2dProblemImpl {
-	return &Csp2dProblemImpl{inputs: inputs, constraints: constraints}
+	return &Csp2dProblemImpl{inputs: inputs, constraints: constraints,
+		repairWeight: defaultRepairWeight, flipWeight: defaultFlipWeight, donorFraction: defaultDonorFraction}
 }
 
 // InitForTest prepares label ranks and the arena exactly as NewPopulation does,
@@ -279,6 +280,12 @@ func (p *Csp2dProblemImpl) DecodeForestForTest(postfix []int) (int, error) {
 
 // SetSearchConstantsForTest sets the search constants of every problem
 // (experiments).
-func SetSearchConstantsForTest(repair, flip, retries int, donor float64) {
-	repairWeight, flipWeight, cloneRetries, donorFraction = repair, flip, retries, donor
+func SetSearchConstantsForTest(retries int) {
+	cloneRetries = retries
+}
+
+// SearchParametersForTest returns the problem's repair weight, flip weight and
+// donor fraction (SetSearchParameters).
+func (p *Csp2dProblemImpl) SearchParametersForTest() (repairWeight, flipWeight int, donorFraction float64) {
+	return p.repairWeight, p.flipWeight, p.donorFraction
 }

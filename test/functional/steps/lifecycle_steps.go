@@ -307,10 +307,14 @@ func (w *World) reportedParameterIs(key, value string) error {
 		got = p.CrossoverRate
 	case "cycleCount":
 		got = float64(p.CycleCount)
-	case "minRate":
-		got = p.MinRate
-	case "maxRate":
-		got = p.MaxRate
+	case "tournamentSize":
+		got = float64(p.TournamentSize)
+	case "repairWeight":
+		got = float64(p.RepairWeight)
+	case "flipWeight":
+		got = float64(p.FlipWeight)
+	case "donorFraction":
+		got = p.DonorFraction
 	case "maxEpochsCount":
 		got = float64(p.MaxEpochsCount)
 	case "windowSize":

@@ -138,10 +138,14 @@ func setParameter(p *api.Parameters, key, value string) error {
 		p.CrossoverRate, err = asFloat()
 	case "cycleCount":
 		p.CycleCount, err = asInt()
-	case "minRate":
-		p.MinRate, err = asFloat()
-	case "maxRate":
-		p.MaxRate, err = asFloat()
+	case "tournamentSize":
+		p.TournamentSize, err = asInt()
+	case "repairWeight":
+		p.RepairWeight, err = asInt()
+	case "flipWeight":
+		p.FlipWeight, err = asInt()
+	case "donorFraction":
+		p.DonorFraction, err = asFloat()
 	default:
 		return fmt.Errorf("unknown parameter %q", key)
 	}

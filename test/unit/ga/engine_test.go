@@ -20,7 +20,7 @@ import (
 
 func params(pop, elite, epochs, window int) *ga.Parameters {
 	return &ga.Parameters{
-		EliteCount: elite, MutationRate: 0.05, MinRate: 0.01, MaxRate: 0.9,
+		EliteCount: elite, MutationRate: 0.05,
 		PopulationSize: pop, MaxEpochsCount: epochs, WindowSize: window,
 	}
 }

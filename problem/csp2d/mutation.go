@@ -54,7 +54,7 @@ func (p *Csp2dProblemImpl) Mutation(mutationRate float64, mutationSet []*problem
 		// only once it is kept (MEM-02).
 
 		// 1) Try "eliminate-and-repair"
-		var weight = repairWeight
+		var weight = p.repairWeight
 		child, improved, err := p.mutateEliminateAndRepair(parent, rnd)
 		if err != nil {
 			return totalMutations, totalWeight, failures, err
@@ -71,7 +71,7 @@ func (p *Csp2dProblemImpl) Mutation(mutationRate float64, mutationSet []*problem
 		}
 
 		// 2) Fallback: critical operator flip
-		weight = flipWeight
+		weight = p.flipWeight
 		if !mutated {
 			child, improved, err = p.mutateCriticalOperatorFlip(parent, rnd)
 			if err != nil {
@@ -622,6 +622,28 @@ func (p *Csp2dProblemImpl) subtreeSpan(postfix []int, end int) int {
 	return 0
 }
 
-// Budget weights of the accepted constructive mutations. Variables so the
-// convergence experiments can vary them (test hooks).
-var repairWeight, flipWeight = 3, 1
+// Defaults of the search parameters (SetSearchParameters): budget units of an
+// accepted eliminate-and-repair and critical flip, and the largest donor
+// subtree of the crossover as a share of the parts.
+const (
+	defaultRepairWeight  = 3
+	defaultFlipWeight    = 1
+	defaultDonorFraction = 0.5
+)
+
+// SetSearchParameters sets the problem's search parameters (the engine passes
+// them every epoch from ga.Parameters). A weight below 1 takes its default (a
+// weight of 0 would never use up the mutation budget); a donor fraction outside
+// (0, 1] takes its default.
+func (p *Csp2dProblemImpl) SetSearchParameters(repairWeight, flipWeight int, donorFraction float64) {
+	if repairWeight < 1 {
+		repairWeight = defaultRepairWeight
+	}
+	if flipWeight < 1 {
+		flipWeight = defaultFlipWeight
+	}
+	if !(donorFraction > 0 && donorFraction <= 1) { // also catches NaN
+		donorFraction = defaultDonorFraction
+	}
+	p.repairWeight, p.flipWeight, p.donorFraction = repairWeight, flipWeight, donorFraction
+}

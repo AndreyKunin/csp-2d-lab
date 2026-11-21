@@ -36,7 +36,7 @@ func BenchmarkEpoch(b *testing.B) {
 			for epochs < b.N {
 				params := &ga.Parameters{
 					PopulationSize: 100, EliteCount: 10, MutationRate: 0.07,
-					MinRate: 0.005, MaxRate: 0.995, MaxEpochsCount: b.N - epochs, WindowSize: 50,
+					MaxEpochsCount: b.N - epochs, WindowSize: 50,
 				}
 				sim := ga.NewSimulation(params)
 				job := ga.NewSimulationJob("bench", sim, csp2d.NewCsp2dProblem(inputs, csp2d.NewConstraints(244, 122, 0.3)))

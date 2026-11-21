@@ -32,7 +32,6 @@ Feature: Cycles and championship
       | maxEpochsCount | 100000000 |
     When I wait for job completion within 60 seconds
     Then the job status is "completed"
-    And the stop reason is "championship stagnated"
     And the run finished 1 cycle
     And the championship has started
     And the epoch number is at most 100000
@@ -45,20 +44,20 @@ Feature: Cycles and championship
       | maxEpochsCount | 100000000 |
     When I wait for job completion within 60 seconds
     Then the job status is "completed"
-    And the stop reason is "stagnated"
     And the run finished 0 cycles
     And the championship has not started
+    And the epoch number is at most 100000
 
   @FT-CYC-05
-  Scenario: A job that reaches the epoch limit has no stop reason
+  Scenario: A job that never stagnates runs to the epoch limit
     Given a running simulation for fixture "D13-mixed-20" with parameters:
       | windowSize     | 1000000 |
       | maxEpochsCount | 20      |
     When I wait for job completion within 60 seconds
     Then the job status is "completed"
     And the epoch number is exactly 20
-    And the stop reason is ""
     And the run finished 0 cycles
+    And the championship has not started
 
   @FT-CYC-06
   Scenario: The cycle count can be reconfigured on a paused job

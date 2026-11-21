@@ -19,9 +19,12 @@ type Csp2dProblem interface {
 }
 
 type Csp2dProblemImpl struct {
-	inputs      []InputDefinition
-	constraints *Constraints
-	population  *problem.Population
+	// Search parameters (SetSearchParameters, mutation.go).
+	repairWeight, flipWeight int
+	donorFraction            float64
+	inputs                   []InputDefinition
+	constraints              *Constraints
+	population               *problem.Population
 	// protectedGenotype keys are compact byte-strings produced from the
 	// numeric-label representation of a postfix (see toNumLabelKey).
 	protectedGenotype map[string]struct{}
@@ -37,8 +40,11 @@ type Csp2dProblemImpl struct {
 
 func NewCsp2dProblem(inputs []InputDefinition, constraints *Constraints) problem.Problem {
 	return &Csp2dProblemImpl{
-		inputs:      inputs,
-		constraints: constraints,
+		inputs:        inputs,
+		constraints:   constraints,
+		repairWeight:  defaultRepairWeight,
+		flipWeight:    defaultFlipWeight,
+		donorFraction: defaultDonorFraction,
 	}
 }
 
@@ -619,7 +625,7 @@ func (p *Csp2dProblemImpl) subtreeCrossover(parent1, parent2 *Csp2dIndividualImp
 
 // cloneRetries bounds how often graftSubtree re-picks the graft point and
 // operator when the child equals the recipient.
-var cloneRetries, donorFraction = 4, 0.5 // donorFraction: largest donor, as a share of the parts
+var cloneRetries = 4
 
 // graftSubtree appends to dst a child of recipient that carries a subtree of
 // donor:
@@ -657,7 +663,7 @@ func (p *Csp2dProblemImpl) graftSubtree(recipient, donor []int, rnd *rand.Rand, 
 // with 2 .. max(2, n/2) leaves. Every tree with 2 or more leaves has one: an
 // operator over two leaves.
 func (p *Csp2dProblemImpl) pickDonorSubtree(postfix []int, rnd *rand.Rand) (start, end int) {
-	maxLeaves := max(2, int(donorFraction*float64(len(postfix)/2+1)))
+	maxLeaves := max(2, int(p.donorFraction*float64(len(postfix)/2+1)))
 	leaves := p.arena.crossoverLeaves[:0] // leaf count of each pending subtree
 	ends := p.arena.crossoverEnds[:0]     // operator positions that qualify
 	for i, id := range postfix {

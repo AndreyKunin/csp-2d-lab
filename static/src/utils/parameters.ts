@@ -45,34 +45,46 @@ export function getInitialParameters(defaultParameters: SimulationParameters): P
             tooltip: 'Share of the non-elite offspring made by crossover, from 0 (exclusive) to 1. The rest are copies of tournament-selected individuals, changed by mutation only.',
         },
         {
-            index: 5, key: 'minRate',
-            displayName: 'Minimum rate allowed',
-            value: defaultParameters.minRate?.toString() || '',
-            tooltip: 'Lower bound of the Crossover and Mutation Rate. Some of problems tend to raise the exploitation undefinitely that leads to convergence to local optima. This parameter prevents that.',
-        },
-        {
-            index: 6, key: 'maxRate',
-            displayName: 'Maximum rate allowed',
-            value: defaultParameters.maxRate?.toString() || '',
-            tooltip: 'Upper bound of the Crossover and Mutation Rate. Some of problems tend to raise the exploration undefinitely that leads to random search. This parameter prevents that.',
-        },
-        {
-            index: 7, key: 'maxEpochsCount',
+            index: 5, key: 'maxEpochsCount',
             displayName: 'Number of generations',
             value: defaultParameters.maxEpochsCount?.toString() || '',
             tooltip: 'Maximum nimber of epochs (generations) in the simulation. Simulation is a process that never halts until manually stopped. We can auto-stop the process when it reaches the maximum number of epochs.',
         },
         {
-            index: 8, key: 'windowSize',
+            index: 6, key: 'windowSize',
             displayName: 'Window size',
             value: defaultParameters.windowSize?.toString() || '',
             tooltip: 'Number of epochs without improvement of the best solution that ends a cycle (and the championship). Also the length of the sliding window that smooths the charted metrics.',
         },
         {
-            index: 9, key: 'cycleCount',
+            index: 7, key: 'cycleCount',
             displayName: 'Cycles before championship',
             value: defaultParameters.cycleCount?.toString() || '',
             tooltip: 'When the best solution stops improving for a window, the cycle ends: its elite is kept and the simulation starts over from random solutions. After this many cycles, all kept elites compete in a final championship; the simulation ends when it stops improving too. 0 = end at the first stagnation.',
+        },
+        {
+            index: 8, key: 'tournamentSize',
+            displayName: 'Tournament size',
+            value: defaultParameters.tournamentSize?.toString() || '',
+            tooltip: 'Number of individuals drawn at random for each parent; the best of them becomes the parent. Larger values favour the best solutions more strongly. A whole number, 1 or more.',
+        },
+        {
+            index: 9, key: 'repairWeight',
+            displayName: 'Repair weight',
+            value: defaultParameters.repairWeight?.toString() || '',
+            tooltip: 'Mutation budget units that one successful eliminate-and-repair mutation costs (the worst sheet is emptied and its parts are packed again). Larger values mean fewer mutations per generation. A whole number, 1 or more.',
+        },
+        {
+            index: 10, key: 'flipWeight',
+            displayName: 'Flip weight',
+            value: defaultParameters.flipWeight?.toString() || '',
+            tooltip: 'Mutation budget units that one successful operator flip costs (a cut direction that wastes the most area is flipped). Larger values mean fewer mutations per generation. A whole number, 1 or more.',
+        },
+        {
+            index: 11, key: 'donorFraction',
+            displayName: 'Donor fraction',
+            value: defaultParameters.donorFraction?.toString() || '',
+            tooltip: 'Largest part of a parent that crossover copies into a child, as a share of the parts: from 0 (exclusive) to 1.',
         }
     ];
 }
@@ -98,29 +110,39 @@ export function getRuntimeParameters(runtimeParameters?: SimulationRuntimeParame
             value: runtimeParameters.crossoverRate.toString() || '',
         },
         {
-            index: 3, key: 'minRate',
-            displayName: 'Minimum rate allowed',
-            value: runtimeParameters.minRate.toString() || '',
-        },
-        {
-            index: 4, key: 'maxRate',
-            displayName: 'Maximum rate allowed',
-            value: runtimeParameters.maxRate.toString() || '',
-        },
-        {
-            index: 5, key: 'maxEpochsCount',
+            index: 3, key: 'maxEpochsCount',
             displayName: 'Number of generations',
             value: runtimeParameters.maxEpochsCount.toString() || '',
         },
         {
-            index: 6, key: 'windowSize',
+            index: 4, key: 'windowSize',
             displayName: 'Window size',
             value: runtimeParameters.windowSize.toString() || '',
         },
         {
-            index: 7, key: 'cycleCount',
+            index: 5, key: 'cycleCount',
             displayName: 'Cycles before championship',
             value: (runtimeParameters.cycleCount ?? 0).toString(),
+        },
+        {
+            index: 6, key: 'tournamentSize',
+            displayName: 'Tournament size',
+            value: (runtimeParameters.tournamentSize ?? 0).toString(),
+        },
+        {
+            index: 7, key: 'repairWeight',
+            displayName: 'Repair weight',
+            value: (runtimeParameters.repairWeight ?? 0).toString(),
+        },
+        {
+            index: 8, key: 'flipWeight',
+            displayName: 'Flip weight',
+            value: (runtimeParameters.flipWeight ?? 0).toString(),
+        },
+        {
+            index: 9, key: 'donorFraction',
+            displayName: 'Donor fraction',
+            value: (runtimeParameters.donorFraction ?? 0).toString(),
         }
     ];
 }
@@ -133,11 +155,13 @@ export function getSimulationParameters(items: PropertyItem[]) {
         eliteCount: Number(propertyMap.get('eliteCount')),
         mutationRate: Number(propertyMap.get('mutationRate')),
         crossoverRate: Number(propertyMap.get('crossoverRate')),
-        minRate: Number(propertyMap.get('minRate')),
-        maxRate: Number(propertyMap.get('maxRate')),
         maxEpochsCount: Number(propertyMap.get('maxEpochsCount')),
         windowSize: Number(propertyMap.get('windowSize')),
         cycleCount: Number(propertyMap.get('cycleCount')),
+        tournamentSize: Number(propertyMap.get('tournamentSize')),
+        repairWeight: Number(propertyMap.get('repairWeight')),
+        flipWeight: Number(propertyMap.get('flipWeight')),
+        donorFraction: Number(propertyMap.get('donorFraction')),
     };
     if (propertyMap.has('populationSize.min')) {
         parameters.populationSize = {
@@ -156,9 +180,9 @@ export function validateSimulationParameters(
         return false;
     }
     let valid = false;
-    if (key.includes('Size') || key.includes('Count')) {
+    if (key.includes('Size') || key.includes('Count') || key.includes('Weight')) {
         valid = validateCount(value);
-    } else if (key.includes('Rate') || key.includes('Delta') || key.includes('Probability')) {
+    } else if (key.includes('Rate') || key.includes('Delta') || key.includes('Probability') || key.includes('Fraction')) {
         valid = validateDecimal(value);
     }
 

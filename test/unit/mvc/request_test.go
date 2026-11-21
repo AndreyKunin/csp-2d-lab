@@ -25,7 +25,8 @@ func defaults(t *testing.T) mvc.SimulationParameters {
 	t.Helper()
 	var p mvc.SimulationParameters
 	body := `{"populationSize":{"min":100,"max":60000},"eliteCount":10,"mutationRate":0.07,
-	          "minRate":0.005,"maxRate":0.995,"maxEpochsCount":20000,"windowSize":50,"crossoverRate":0.75,"cycleCount":10}`
+	          "maxEpochsCount":20000,"windowSize":50,"crossoverRate":0.75,"cycleCount":10,
+	          "tournamentSize":5,"repairWeight":3,"flipWeight":1,"donorFraction":0.5}`
 	if err := json.Unmarshal([]byte(body), &p); err != nil {
 		t.Fatal(err)
 	}
@@ -138,6 +139,17 @@ func TestBuildParameters(t *testing.T) {
 	if p := decodeRequest(t, `{"parameters":{"cycleCount":4}}`).BuildParameters(d, 10); p.CycleCount != 4 {
 		t.Fatalf("cycleCount override %d, want 4", p.CycleCount)
 	}
+	// Tournament size, repair and flip weights and donor fraction come from the
+	// defaults and a request can override each of them.
+	if p.TournamentSize != 5 || p.RepairWeight != 3 || p.FlipWeight != 1 || p.DonorFraction != 0.5 {
+		t.Fatalf("defaults: tournament %d, repair %d, flip %d, donor %v; want 5, 3, 1, 0.5",
+			p.TournamentSize, p.RepairWeight, p.FlipWeight, p.DonorFraction)
+	}
+	o := decodeRequest(t, `{"parameters":{"tournamentSize":3,"repairWeight":6,"flipWeight":2,"donorFraction":0.75}}`).BuildParameters(d, 10)
+	if o.TournamentSize != 3 || o.RepairWeight != 6 || o.FlipWeight != 2 || o.DonorFraction != 0.75 {
+		t.Fatalf("overrides: tournament %d, repair %d, flip %d, donor %v; want 3, 6, 2, 0.75",
+			o.TournamentSize, o.RepairWeight, o.FlipWeight, o.DonorFraction)
+	}
 }
 
 // UT-CFG-01: the production configuration parses.
@@ -149,7 +161,7 @@ func TestProductionConfigurationParses(t *testing.T) {
 	}
 	cfg := mvc.GetConfigurationFromBytes(data)
 	sp := cfg.Defaults.SimulationParameters
-	if sp.PopulationSize == nil || sp.EliteCount == nil || sp.MutationRate == nil || sp.CrossoverRate == nil || sp.CycleCount == nil || sp.WindowSize == nil || sp.MaxEpochsCount == nil {
+	if sp.PopulationSize == nil || sp.EliteCount == nil || sp.MutationRate == nil || sp.CrossoverRate == nil || sp.CycleCount == nil || sp.TournamentSize == nil || sp.RepairWeight == nil || sp.FlipWeight == nil || sp.DonorFraction == nil || sp.WindowSize == nil || sp.MaxEpochsCount == nil {
 		t.Fatalf("missing defaults: %+v", sp)
 	}
 	if cfg.Server.StaticDir == "" {
