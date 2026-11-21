@@ -1,6 +1,6 @@
 import {InputFormData} from "../components/InputForm";
-import {isNaN} from "mathjs";
 import {getSimulationParameters} from "./parameters";
+import {PARAMETER_DEFINITIONS, validateParameter, valueOf} from "./parameterDefinitions";
 
 interface PopulationSize {
     min: number;
@@ -90,115 +90,34 @@ export class Simulation {
         }
     }
 
+    // validate checks every parameter against its rule (parameterDefinitions.ts),
+    // then the relations between parameters.
     public validate(): string[] {
-        let errors: string[] = [];
-
-        if (!this.initialParameters) {
+        const errors: string[] = [];
+        const p = this.initialParameters;
+        if (!p) {
             return errors;
         }
-
-        this.checkRange(
-            'Minimum population size', 'Maximum population size',
-            errors, 3, Number.MAX_SAFE_INTEGER,
-            this.initialParameters.populationSize?.min, this.initialParameters.populationSize?.max
-        );
-
-        this.checkRange(
-            'Elite count', 'Minimum population size',
-            errors, 1, Number.MAX_SAFE_INTEGER,
-            this.initialParameters.eliteCount, this.initialParameters.populationSize?.min
-        );
-
-        this.checkRate("Mutation rate", errors, this.initialParameters.mutationRate);
-        this.checkCrossoverRate(errors, this.initialParameters.crossoverRate);
-
-        this.checkRange(
-            'Window size', 'Number of generations',
-            errors, 1, Number.MAX_SAFE_INTEGER,
-            this.initialParameters.windowSize, this.initialParameters.maxEpochsCount
-        );
-
-        this.checkCycleCount(errors, this.initialParameters.cycleCount);
-        this.checkWholeAtLeast('Tournament size', errors, 1, this.initialParameters.tournamentSize);
-        this.checkWholeAtLeast('Repair weight', errors, 1, this.initialParameters.repairWeight);
-        this.checkWholeAtLeast('Flip weight', errors, 1, this.initialParameters.flipWeight);
-        this.checkDonorFraction(errors, this.initialParameters.donorFraction);
-
+        for (const definition of PARAMETER_DEFINITIONS) {
+            const value = valueOf(p, definition.key);
+            const error = validateParameter(definition.key, value === undefined || value === null ? '' : String(value));
+            if (error) {
+                errors.push(error);
+            }
+        }
+        if (errors.length > 0) {
+            return errors;
+        }
+        const minPopulation = p.populationSize?.min, maxPopulation = p.populationSize?.max;
+        if (minPopulation !== undefined && maxPopulation !== undefined && minPopulation > maxPopulation) {
+            errors.push('Minimum population size is greater than Maximum population size.');
+        }
+        if (p.eliteCount !== undefined && minPopulation !== undefined && p.eliteCount > minPopulation) {
+            errors.push('Elite count is greater than Minimum population size.');
+        }
+        if (p.windowSize !== undefined && p.maxEpochsCount !== undefined && p.windowSize > p.maxEpochsCount) {
+            errors.push('Window size is greater than Number of generations.');
+        }
         return errors;
-    }
-
-    // Cycles before the championship: a whole number, 0 or more (0 = the run
-    // ends at the first stagnation).
-    private checkCycleCount(errors: string[], value?: number) {
-        if (value === undefined || isNaN(value) || !Number.isInteger(value)) {
-            errors.push('Invalid Cycles before championship value.');
-        } else if (value < 0) {
-            errors.push('Cycles before championship cannot be less than 0.');
-        }
-    }
-
-    private checkWholeAtLeast(name: string, errors: string[], min: number, value?: number) {
-        if (value === undefined || isNaN(value) || !Number.isInteger(value)) {
-            errors.push(`Invalid ${name} value.`);
-        } else if (value < min) {
-            errors.push(`${name} cannot be less than ${min}.`);
-        }
-    }
-
-    // The donor fraction may be 1 (a whole parent can be copied).
-    private checkDonorFraction(errors: string[], value?: number) {
-        if (value === undefined || isNaN(value)) {
-            errors.push('Invalid Donor fraction value.');
-        } else if (value <= 0) {
-            errors.push('Donor fraction must be greater than 0.');
-        } else if (value > 1) {
-            errors.push('Donor fraction cannot be greater than 1.');
-        }
-    }
-
-    // The crossover rate may be 1 (every non-elite slot is filled by crossover).
-    private checkCrossoverRate(errors: string[], value?: number) {
-        if (value === undefined || isNaN(value)) {
-            errors.push('Invalid Crossover rate value.');
-        } else if (value <= 0) {
-            errors.push('Crossover rate must be greater than 0.');
-        } else if (value > 1) {
-            errors.push('Crossover rate cannot be greater than 1.');
-        }
-    }
-
-    private checkRate(name: string, errors: string[], value?: number) {
-        if (value === undefined || isNaN(value)) {
-            errors.push(`Invalid ${name} value.`);
-        } else if (value === 0) {
-            errors.push(`${name} cannot be 0.`);
-        } else if (value >= 1) {
-            errors.push(`${name} must be less than 1.`);
-        }
-    }
-
-    private checkRange(nameLow: string, nameHigh: string, errors: string[], min: number, max: number, valueLow?: number, valueHigh?: number) {
-        let formatValid = true;
-        if (valueLow === undefined || isNaN(valueLow)) {
-            errors.push(`Invalid ${nameLow} value.`);
-            formatValid = false;
-        }
-        if (valueHigh === undefined || isNaN(valueHigh)) {
-            errors.push(`Invalid ${nameHigh} value.`);
-            formatValid = false;
-        }
-        if (!formatValid) {
-            return;
-        }
-
-        if (valueLow !== undefined && valueLow < min) {
-            errors.push(`${nameLow} cannot be less than ${min}.`);
-        }
-        if (valueHigh !== undefined && valueHigh > max) {
-            errors.push(`${nameHigh} cannot be higher than ${max}.`);
-        }
-        if (valueLow !== undefined && valueHigh !== undefined && valueLow > valueHigh) {
-            errors.push(`${nameLow} is greater than ${nameHigh}.`);
-        }
     }
 }
