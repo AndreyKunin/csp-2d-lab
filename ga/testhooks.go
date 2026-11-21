@@ -27,10 +27,6 @@ func ComputeEpochStateForTest(simulation *Simulation, population *problem.Popula
 	return computeEpochState(simulation, population)
 }
 
-func AdaptParametersForTest(state *State, parameters *Parameters) {
-	adaptParameters(state, parameters)
-}
-
 func (window *WindowState) AddEpochForTest(newState *EpochState, windowSize int) {
 	window.addEpoch(newState, windowSize)
 }

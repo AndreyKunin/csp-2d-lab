@@ -66,7 +66,13 @@ export function getInitialParameters(defaultParameters: SimulationParameters): P
             index: 8, key: 'windowSize',
             displayName: 'Window size',
             value: defaultParameters.windowSize?.toString() || '',
-            tooltip: 'Adaptive algorithm uses derivative metrics to adjust parameters. But fitness function is very volatile over time, so we use a sliding average window to make these metrics smooth.',
+            tooltip: 'Number of epochs without improvement of the best solution that ends a cycle (and the championship). Also the length of the sliding window that smooths the charted metrics.',
+        },
+        {
+            index: 9, key: 'cycleCount',
+            displayName: 'Cycles before championship',
+            value: defaultParameters.cycleCount?.toString() || '',
+            tooltip: 'When the best solution stops improving for a window, the cycle ends: its elite is kept and the simulation starts over from random solutions. After this many cycles, all kept elites compete in a final championship; the simulation ends when it stops improving too. 0 = end at the first stagnation.',
         }
     ];
 }
@@ -110,6 +116,11 @@ export function getRuntimeParameters(runtimeParameters?: SimulationRuntimeParame
             index: 6, key: 'windowSize',
             displayName: 'Window size',
             value: runtimeParameters.windowSize.toString() || '',
+        },
+        {
+            index: 7, key: 'cycleCount',
+            displayName: 'Cycles before championship',
+            value: (runtimeParameters.cycleCount ?? 0).toString(),
         }
     ];
 }
@@ -126,6 +137,7 @@ export function getSimulationParameters(items: PropertyItem[]) {
         maxRate: Number(propertyMap.get('maxRate')),
         maxEpochsCount: Number(propertyMap.get('maxEpochsCount')),
         windowSize: Number(propertyMap.get('windowSize')),
+        cycleCount: Number(propertyMap.get('cycleCount')),
     };
     if (propertyMap.has('populationSize.min')) {
         parameters.populationSize = {

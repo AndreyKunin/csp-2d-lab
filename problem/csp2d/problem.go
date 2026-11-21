@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"slices"
 	"sort"
 	"strings"
 	"unsafe"
@@ -745,4 +746,11 @@ func samePostfix(a, b []int) bool {
 // generation arena (ga copies the slots that crossover skips).
 func (p *Csp2dProblemImpl) CopyIndividual(individual problem.Individual) problem.Individual {
 	return newIndividual(p.arena.GenAlloc(individual.(*Csp2dIndividualImpl).postfix))
+}
+
+// DetachIndividual returns a copy whose postfix lives on the Go heap, outside
+// every arena, so it survives any number of epochs (championship experiment,
+// ga/ga.go). CopyIndividual brings it back into the population.
+func (p *Csp2dProblemImpl) DetachIndividual(individual problem.Individual) problem.Individual {
+	return newIndividual(slices.Clone(individual.(*Csp2dIndividualImpl).postfix))
 }

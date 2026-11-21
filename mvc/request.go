@@ -28,6 +28,7 @@ type SimulationParameters struct {
 	EliteCount     *int     `json:"eliteCount"            yaml:"eliteCount"`
 	MutationRate   *float64 `json:"mutationRate"          yaml:"mutationRate"`
 	CrossoverRate  *float64 `json:"crossoverRate"         yaml:"crossoverRate"`
+	CycleCount     *int     `json:"cycleCount"            yaml:"cycleCount"`
 	MaxRate        *float64 `json:"maxRate"               yaml:"maxRate"`
 	MinRate        *float64 `json:"minRate"               yaml:"minRate"`
 	MaxEpochsCount *int     `json:"maxEpochsCount"        yaml:"maxEpochsCount"`
@@ -98,6 +99,9 @@ func (r *Request) buildParameters(inputsCount int, parameters SimulationParamete
 	}
 	if parameters.CrossoverRate != nil {
 		result.CrossoverRate = *parameters.CrossoverRate
+	}
+	if parameters.CycleCount != nil {
+		result.CycleCount = *parameters.CycleCount
 	}
 	if parameters.MaxRate != nil {
 		result.MaxRate = *parameters.MaxRate

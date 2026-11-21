@@ -45,6 +45,11 @@ func Simulate(job *SimulationJob) error {
 		return err
 	}
 
+	// Cycles and championship (see the loop below).
+	var bestValue float64
+	lastImprove, seenBest := 0, false
+	var savedElites []problem.Individual // the elites of the finished cycles, outside the arenas
+
 	//debug code
 	start := time.Now()
 	epochs := 0
@@ -85,7 +90,46 @@ func Simulate(job *SimulationJob) error {
 		var species = *population.Species
 		var size = simulation.Parameters.PopulationSize
 
+		// Cycles and championship: a cycle ends when the best fitness has not
+		// improved for WindowSize epochs. Its elites are saved and the whole
+		// population (elite slots too) starts over from random individuals; the
+		// random source continues. After CycleCount cycles the population is all
+		// saved elites plus random individuals (the championship); when that
+		// stagnates too, the run ends. CycleCount 0: the run ends at the first
+		// stagnation.
+		epochNow := simulation.State.CurrentEpoch.EpochNumber
+		if v := species[0].GetFitnessValue(); !seenBest || v < bestValue {
+			bestValue, seenBest = v, true
+			lastImprove = epochNow
+		}
+		startOver := false // refill every slot this epoch, no offspring
+		if window := max(simulation.Parameters.WindowSize, 1); epochNow-lastImprove >= window {
+			state := simulation.State
+			if state.ChampionshipSince > 0 || simulation.Parameters.CycleCount <= 0 {
+				if state.ChampionshipSince > 0 {
+					state.StopReason = StopChampionshipStagnated
+				} else {
+					state.StopReason = StopStagnated
+				}
+				job.publish(simulation, population) // readers see the stop reason
+				break
+			}
+			for i := 0; i < eliteCount; i++ {
+				savedElites = append(savedElites, detachIndividual(job.problem, species[i]))
+			}
+			state.Cycles++
+			if state.Cycles >= simulation.Parameters.CycleCount {
+				state.ChampionshipSince = epochNow + 1 // the championship population is evaluated next epoch
+			}
+			startOver = true
+			seenBest = false
+			lastImprove = epochNow
+		}
+
 		var crossoverCount = crossoverSlots(simulation.Parameters.CrossoverRate, size-eliteCount)
+		if startOver {
+			crossoverCount = 0
+		}
 
 		var eliteSet = make([]problem.Individual, 0, eliteCount)
 		var crossoverSet = make([]*problem.Individual, 0, crossoverCount)
@@ -115,24 +159,40 @@ func Simulate(job *SimulationJob) error {
 		job.problem.Protect(eliteSet)
 		epochNumber := simulation.State.CurrentEpoch.EpochNumber
 
-		// each 2 parents produce 2 offsprings but remain immutable
-		newGeneration, failuresCrossover, err1 := job.reproduce(species, crossoverSet, size-eliteCount-crossoverCount, tournamentSize, rnd)
-		if err1 != nil {
-			return err1
-		}
-		simulation.State.CurrentEpoch.Failures += failuresCrossover
+		var newGeneration []*problem.Individual
+		if !startOver { // a start-over epoch leaves newGeneration empty: the loop below refills every slot
+			// each 2 parents produce 2 offsprings but remain immutable
+			var failuresCrossover int
+			var err1 error
+			newGeneration, failuresCrossover, err1 = job.reproduce(species, crossoverSet, size-eliteCount-crossoverCount, tournamentSize, rnd)
+			if err1 != nil {
+				return err1
+			}
+			simulation.State.CurrentEpoch.Failures += failuresCrossover
 
-		_, _, failuresMutation, err2 := job.problem.Mutation(simulation.Parameters.MutationRate, newGeneration, rnd)
-		if err2 != nil {
-			return err2
+			_, _, failuresMutation, err2 := job.problem.Mutation(simulation.Parameters.MutationRate, newGeneration, rnd)
+			if err2 != nil {
+				return err2
+			}
+			simulation.State.CurrentEpoch.Failures += failuresMutation
 		}
-		simulation.State.CurrentEpoch.Failures += failuresMutation
 
-		// repopulating the generation except the elite
+		// repopulating the generation except the elite (start-over: every slot,
+		// the saved elites first when the championship begins)
 		newGenerationCount := len(newGeneration)
 		var failuresGeneration = 0
-		for i := eliteCount; i < size; i++ {
-			if i-eliteCount < newGenerationCount {
+		first := eliteCount
+		var seeds []problem.Individual
+		if startOver {
+			first = 0
+			if simulation.State.ChampionshipSince > 0 {
+				seeds = savedElites
+			}
+		}
+		for i := first; i < size; i++ {
+			if i < len(seeds) {
+				species[i] = copyIndividual(job.problem, seeds[i])
+			} else if i >= eliteCount && i-eliteCount < newGenerationCount {
 				species[i] = *newGeneration[i-eliteCount]
 			} else { // can be different by 1 if crossoverCount is odd
 				ind, err3 := job.problem.NewRandomIndividual(rnd)
@@ -155,8 +215,6 @@ func Simulate(job *SimulationJob) error {
 		if rotator, ok := job.problem.(interface{ RotateGenerations() }); ok {
 			rotator.RotateGenerations()
 		}
-
-		adaptParameters(simulation.State, simulation.Parameters)
 
 		// The only point where HTTP readers get new data (see SimulationJob.publish).
 		job.publish(simulation, population)
@@ -229,13 +287,35 @@ func computeEpochState(simulation *Simulation, population *problem.Population) *
 	}
 }
 
-func adaptParameters(state *State, parameters *Parameters) {
-	if state.CurrentEpoch.EpochNumber < parameters.WindowSize {
-		return
+// Stop reasons recorded in State.StopReason when a run ends before
+// maxEpochsCount.
+const (
+	StopChampionshipStagnated = "championship stagnated"
+	StopStagnated             = "stagnated" // cycleCount 0: no cycles, no championship
+)
+
+// detachIndividual returns a copy of the individual that survives any number
+// of epochs: the problem's optional DetachIndividual (outside its memory
+// arenas), else the individual itself.
+func detachIndividual(p problem.Problem, individual problem.Individual) problem.Individual {
+	if d, ok := p.(interface {
+		DetachIndividual(problem.Individual) problem.Individual
+	}); ok {
+		return d.DetachIndividual(individual)
 	}
-	if state.ConvergedSince > 0 { // Converged to the minimum
-		parameters.MaxEpochsCount = state.CurrentEpoch.EpochNumber
+	return individual
+}
+
+// copyIndividual brings a detached individual back into the population: the
+// problem's optional CopyIndividual (into its generation memory), else the
+// individual itself.
+func copyIndividual(p problem.Problem, individual problem.Individual) problem.Individual {
+	if c, ok := p.(interface {
+		CopyIndividual(problem.Individual) problem.Individual
+	}); ok {
+		return c.CopyIndividual(individual)
 	}
+	return individual
 }
 
 // tournamentK is the tournament size of the selection: 5, measured on G060

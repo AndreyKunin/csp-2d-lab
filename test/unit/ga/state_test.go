@@ -80,30 +80,3 @@ func TestWindowSinceMarkers(t *testing.T) {
 		}
 	})
 }
-
-// UT-GA-AD-01: the early stop applies only after a full window, and then ends
-// the run at the current epoch.
-func TestAdaptParametersEarlyStop(t *testing.T) {
-	p := params(10, 2, 1000, 50)
-	sim := &ga.Simulation{Parameters: p, State: &ga.State{ConvergedSince: 3}}
-
-	sim.State.CurrentEpoch.EpochNumber = 49 // window not full yet
-	ga.AdaptParametersForTest(sim.State, p)
-	if p.MaxEpochsCount != 1000 || ga.TerminationConditionForTest(sim) {
-		t.Fatalf("stopped before a full window: maxEpochs %d", p.MaxEpochsCount)
-	}
-
-	sim.State.CurrentEpoch.EpochNumber = 50
-	ga.AdaptParametersForTest(sim.State, p)
-	if p.MaxEpochsCount != 50 || !ga.TerminationConditionForTest(sim) {
-		t.Fatalf("converged run not stopped: maxEpochs %d", p.MaxEpochsCount)
-	}
-
-	notConverged := params(10, 2, 1000, 50)
-	other := &ga.Simulation{Parameters: notConverged, State: &ga.State{}}
-	other.State.CurrentEpoch.EpochNumber = 500
-	ga.AdaptParametersForTest(other.State, notConverged)
-	if notConverged.MaxEpochsCount != 1000 || ga.TerminationConditionForTest(other) {
-		t.Fatal("a non-converged run was stopped")
-	}
-}

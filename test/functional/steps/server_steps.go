@@ -191,6 +191,7 @@ type configDefaults struct {
 			EliteCount     int     `yaml:"eliteCount"`
 			MutationRate   float64 `yaml:"mutationRate"`
 			CrossoverRate  float64 `yaml:"crossoverRate"`
+			CycleCount     int     `yaml:"cycleCount"`
 			MinRate        float64 `yaml:"minRate"`
 			MaxRate        float64 `yaml:"maxRate"`
 			MaxEpochsCount int     `yaml:"maxEpochsCount"`
@@ -246,6 +247,7 @@ func (w *World) defaultParametersMatchConfig() error {
 	checkInt("eliteCount", got.EliteCount, want.EliteCount)
 	checkFloat("mutationRate", got.MutationRate, want.MutationRate)
 	checkFloat("crossoverRate", got.CrossoverRate, want.CrossoverRate)
+	checkInt("cycleCount", got.CycleCount, want.CycleCount)
 	checkFloat("minRate", got.MinRate, want.MinRate)
 	checkFloat("maxRate", got.MaxRate, want.MaxRate)
 	checkInt("maxEpochsCount", got.MaxEpochsCount, want.MaxEpochsCount)

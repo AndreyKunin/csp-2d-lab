@@ -15,6 +15,7 @@ defaults:
     maxRate: 0.995
     maxEpochsCount: 20000
     windowSize: 50
+    cycleCount: 10
 
 # Job housekeeping. Missing or 0 values select the defaults.
 jobs:

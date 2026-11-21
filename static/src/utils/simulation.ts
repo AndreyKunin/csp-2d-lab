@@ -37,6 +37,9 @@ export interface SimulationState {
     windowState: WindowState;
     saturatedSince: number;
     convergedSince: number;
+    cycles: number;            // finished cycles (each ends when the best stagnates for windowSize epochs)
+    championshipSince: number; // epoch the championship began; 0 = not yet
+    stopReason?: string;       // why the run ended before maxEpochsCount
 }
 
 export interface SimulationStatistics {
@@ -54,6 +57,7 @@ export interface SimulationParameters {
     minRate?: number;
     maxEpochsCount?: number;
     windowSize?: number;
+    cycleCount?: number;
 }
 
 export interface SimulationRuntimeParameters {
@@ -66,6 +70,7 @@ export interface SimulationRuntimeParameters {
     minRate: number;
     maxEpochsCount: number;
     windowSize: number;
+    cycleCount: number;
 }
 
 export class Simulation {
@@ -114,7 +119,19 @@ export class Simulation {
             this.initialParameters.windowSize, this.initialParameters.maxEpochsCount
         );
 
+        this.checkCycleCount(errors, this.initialParameters.cycleCount);
+
         return errors;
+    }
+
+    // Cycles before the championship: a whole number, 0 or more (0 = the run
+    // ends at the first stagnation).
+    private checkCycleCount(errors: string[], value?: number) {
+        if (value === undefined || isNaN(value) || !Number.isInteger(value)) {
+            errors.push('Invalid Cycles before championship value.');
+        } else if (value < 0) {
+            errors.push('Cycles before championship cannot be less than 0.');
+        }
     }
 
     // The crossover rate may be 1 (every non-elite slot is filled by crossover).

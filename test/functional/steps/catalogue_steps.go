@@ -20,6 +20,10 @@ func registerCatalogueSteps(ctx *godog.ScenarioContext, w *World) {
 	ctx.Step(`^the two started jobs have different ids$`, w.twoJobsDifferentIDs)
 	ctx.Step(`^the job status is not "([^"]*)"$`, w.jobStatusIsNot)
 	ctx.Step(`^the epoch number is exactly (\d+)$`, w.epochExactly)
+	ctx.Step(`^the stop reason is "([^"]*)"$`, w.stopReasonIs)
+	ctx.Step(`^the run finished (\d+) cycles?$`, w.finishedCycles)
+	ctx.Step(`^the championship has started$`, w.championshipStarted)
+	ctx.Step(`^the championship has not started$`, w.championshipNotStarted)
 	ctx.Step(`^the epoch number exceeds (\d+) within (\d+) seconds$`, w.epochExceedsWithin)
 	ctx.Step(`^I remember the current epoch$`, w.rememberEpoch)
 	ctx.Step(`^I configure maxEpochsCount to the remembered epoch$`, w.configureMaxEpochsToRemembered)
@@ -448,5 +452,63 @@ func (w *World) windowAveragesNotBelowBest() error {
 
 func (w *World) waitSeconds(n int) error {
 	time.Sleep(time.Duration(n) * time.Second)
+	return nil
+}
+
+// Cycles and championship (ga.go): the published state's cycle counters and
+// stop reason.
+
+func (w *World) publishedState() (*api.State, error) {
+	st, err := w.fetchStatus()
+	if err != nil {
+		return nil, err
+	}
+	if st.Statistics == nil || st.Statistics.State == nil {
+		return nil, fmt.Errorf("no published state")
+	}
+	return st.Statistics.State, nil
+}
+
+func (w *World) stopReasonIs(want string) error {
+	s, err := w.publishedState()
+	if err != nil {
+		return err
+	}
+	if s.StopReason != want {
+		return fmt.Errorf("stop reason %q, want %q", s.StopReason, want)
+	}
+	return nil
+}
+
+func (w *World) finishedCycles(n int) error {
+	s, err := w.publishedState()
+	if err != nil {
+		return err
+	}
+	if s.Cycles != n {
+		return fmt.Errorf("%d finished cycles, want %d", s.Cycles, n)
+	}
+	return nil
+}
+
+func (w *World) championshipStarted() error {
+	s, err := w.publishedState()
+	if err != nil {
+		return err
+	}
+	if s.ChampionshipSince <= 0 {
+		return fmt.Errorf("championship not started (championshipSince %d)", s.ChampionshipSince)
+	}
+	return nil
+}
+
+func (w *World) championshipNotStarted() error {
+	s, err := w.publishedState()
+	if err != nil {
+		return err
+	}
+	if s.ChampionshipSince != 0 {
+		return fmt.Errorf("championship started at epoch %d", s.ChampionshipSince)
+	}
 	return nil
 }

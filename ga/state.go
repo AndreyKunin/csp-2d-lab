@@ -42,6 +42,12 @@ type State struct {
 	SaturatedSince int         `json:"saturatedSince"` // The epoch number since what the crossover set is saturated
 	ConvergedSince int         `json:"convergedSince"` // The epoch number since what the elite set is converged
 	NewEpochSince  int         `json:"newEpochSince"`  // The first epoch number in the certain era
+	// Cycles and championship (ga.go): finished cycles, the epoch the
+	// championship began (0 = not yet), and why the run ended early ("" = it
+	// did not, or it reached maxEpochsCount).
+	Cycles            int    `json:"cycles"`
+	ChampionshipSince int    `json:"championshipSince"`
+	StopReason        string `json:"stopReason,omitempty"`
 }
 
 func (state *State) computeWindowState() {

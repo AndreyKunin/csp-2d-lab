@@ -16,3 +16,4 @@ defaults:
     maxRate: 0.995
     maxEpochsCount: 3000
     windowSize: 50
+    cycleCount: 10

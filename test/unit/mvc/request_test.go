@@ -25,7 +25,7 @@ func defaults(t *testing.T) mvc.SimulationParameters {
 	t.Helper()
 	var p mvc.SimulationParameters
 	body := `{"populationSize":{"min":100,"max":60000},"eliteCount":10,"mutationRate":0.07,
-	          "minRate":0.005,"maxRate":0.995,"maxEpochsCount":20000,"windowSize":50,"crossoverRate":0.75}`
+	          "minRate":0.005,"maxRate":0.995,"maxEpochsCount":20000,"windowSize":50,"crossoverRate":0.75,"cycleCount":10}`
 	if err := json.Unmarshal([]byte(body), &p); err != nil {
 		t.Fatal(err)
 	}
@@ -130,6 +130,14 @@ func TestBuildParameters(t *testing.T) {
 	if p := decodeRequest(t, `{"parameters":{"crossoverRate":0.5}}`).BuildParameters(d, 10); p.CrossoverRate != 0.5 {
 		t.Fatalf("crossoverRate override %v, want 0.5", p.CrossoverRate)
 	}
+	// The cycle count (cycles before the championship) comes from the defaults
+	// and a request can override it.
+	if p.CycleCount != 10 {
+		t.Fatalf("default cycleCount %d, want 10", p.CycleCount)
+	}
+	if p := decodeRequest(t, `{"parameters":{"cycleCount":4}}`).BuildParameters(d, 10); p.CycleCount != 4 {
+		t.Fatalf("cycleCount override %d, want 4", p.CycleCount)
+	}
 }
 
 // UT-CFG-01: the production configuration parses.
@@ -141,7 +149,7 @@ func TestProductionConfigurationParses(t *testing.T) {
 	}
 	cfg := mvc.GetConfigurationFromBytes(data)
 	sp := cfg.Defaults.SimulationParameters
-	if sp.PopulationSize == nil || sp.EliteCount == nil || sp.MutationRate == nil || sp.CrossoverRate == nil || sp.WindowSize == nil || sp.MaxEpochsCount == nil {
+	if sp.PopulationSize == nil || sp.EliteCount == nil || sp.MutationRate == nil || sp.CrossoverRate == nil || sp.CycleCount == nil || sp.WindowSize == nil || sp.MaxEpochsCount == nil {
 		t.Fatalf("missing defaults: %+v", sp)
 	}
 	if cfg.Server.StaticDir == "" {

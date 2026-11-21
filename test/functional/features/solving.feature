@@ -102,7 +102,7 @@ Feature: Solving known instances
 
   # With one elite the elite deviation is always 0, so the latched early stop
   # fires at epoch windowSize even though the run could still improve.
-  @FT-SOLVE-12 @pending
+  @FT-SOLVE-12
   Scenario: The early stop is not premature
     Given a running simulation for fixture "D13-mixed-20" with parameters:
       | eliteCount     | 1   |

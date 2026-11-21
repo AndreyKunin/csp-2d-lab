@@ -136,6 +136,8 @@ func setParameter(p *api.Parameters, key, value string) error {
 		p.MutationRate, err = asFloat()
 	case "crossoverRate":
 		p.CrossoverRate, err = asFloat()
+	case "cycleCount":
+		p.CycleCount, err = asInt()
 	case "minRate":
 		p.MinRate, err = asFloat()
 	case "maxRate":
