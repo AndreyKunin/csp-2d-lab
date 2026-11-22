@@ -60,9 +60,9 @@ func Reduce(op string, a, b Dims, kerf float64) (Dims, error) {
 	l1, s1, l2, s2 := a.Long, a.Short, b.Long, b.Short
 	switch op {
 	case "S":
-		if s1 > l2 { // b fits across a's short side: rotate b
+		if s1 >= l2 { // b fits across a's short side (ties included): rotate b
 			s2, l2 = l2, s2
-		} else if s2 > l1 { // a fits across b's short side: rotate a
+		} else if s2 >= l1 { // a fits across b's short side (ties included): rotate a
 			s1, l1 = l1, s1
 		}
 		return NewDims(l1+l2+kerf, math.Max(s1, s2)), nil

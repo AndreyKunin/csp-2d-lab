@@ -79,10 +79,10 @@ Feature: Solving known instances
     Then at least 4 of 5 runs reach 3 sheets within 3000 epochs
 
   # The optimal layout stacks 60x50 on 50x40 into a 50x100 column, which needs
-  # a rotation on an exact tie (s1 == l2 == 50). The strict ">" tie-break in
-  # reduce never rotates on a tie, so the optimum cannot be encoded: S gives
-  # 110x50, L gives 60x90. Observed: 5 of 5 runs end at 3 sheets.
-  @FT-SOLVE-10 @quality @pending
+  # a rotation on an exact tie (s1 == l2 == 50). Regression test for the former
+  # GA-12: with a strict ">" tie-break the optimum could not be encoded (S gave
+  # 110x50, L 60x90) and 5 of 5 runs ended at 3 sheets.
+  @FT-SOLVE-10 @quality
   Scenario: A guillotine-perfect instance reaches its optimum
     Given the server is running with config "quality"
     And a start request from fixture "D16-guillotine-opt"

@@ -406,9 +406,12 @@ func (p *Csp2dProblemImpl) reduce(id int, m1 Metrics, m2 Metrics, gap float64) M
 	l2 := m2.longSide
 	var newS, newL float64
 	if id == NumS {
-		if s1 > l2 {
+		// A child is rotated when it fits across the other child's short side,
+		// ties included: a rotation on a tie never makes the join longer, and
+		// without it some exact tilings have no encoding (GA-12).
+		if s1 >= l2 {
 			s2, l2 = l2, s2
-		} else if s2 > l1 {
+		} else if s2 >= l1 {
 			s1, l1 = l1, s1
 		}
 		newL = l1 + l2 + gap
