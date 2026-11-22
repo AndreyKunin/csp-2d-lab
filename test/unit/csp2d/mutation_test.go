@@ -176,7 +176,8 @@ func TestReplaceElements(t *testing.T) {
 	properties.TestingRun(t)
 }
 
-// UT-MUT-04: critical operators are ranked by the waste of their join.
+// UT-MUT-04: critical operators are ranked by the relative waste of their join,
+// penalty / area of the join (GA-09).
 func TestRankCriticalOperators(t *testing.T) {
 	parts := []part{{"1", 40, 30}, {"2", 50, 20}, {"3", 10, 10}}
 	p := newProblem(t, parts, sheet100, 1, 4, 1)
@@ -190,8 +191,8 @@ func TestRankCriticalOperators(t *testing.T) {
 	j1, _ := oracle.Reduce("S", d(0), d(1), 1)
 	j2, _ := oracle.Reduce("L", j1, d(2), 1)
 	want := map[int]float64{
-		2: j1.Area() - d(0).Area() - d(1).Area(),
-		4: j2.Area() - j1.Area() - d(2).Area(),
+		2: (j1.Area() - d(0).Area() - d(1).Area()) / j1.Area(),
+		4: (j2.Area() - j1.Area() - d(2).Area()) / j2.Area(),
 	}
 	for i, c := range got {
 		if postfix[c.Index] >= 0 {
@@ -206,16 +207,103 @@ func TestRankCriticalOperators(t *testing.T) {
 	}
 }
 
-// UT-MUT-05: the worst tree is the one with the lowest fill ratio.
-func TestSelectWorstTree(t *testing.T) {
-	p := newProblem(t, []part{{"1", 10, 10}, {"2", 10, 10}, {"3", 10, 10}}, sheet100, 0, 4, 1)
-	forest := []csp2d.NodeView{
-		{Postfix: []int{0}, Long: 10, Short: 10}, // fill 1.0
-		{Postfix: []int{1}, Long: 20, Short: 10}, // fill 0.5
-		{Postfix: []int{2}, Long: 20, Short: 10}, // fill 0.5 (tie: first wins)
+// UT-MUT-13: an operator whose join overflows the sheet under both S and L is
+// not a candidate: flipping it rarely changes the layout (GA-09). One that
+// fits under either operator stays, and without a sheet nothing is skipped.
+func TestRankCriticalOperatorsSkipsDoubleOverflow(t *testing.T) {
+	cases := []struct {
+		name  string
+		parts []part
+		sheet *[2]float64
+		want  []int // candidate postfix indices, in any order
+	}{
+		// 60x60 + 60x60 is 120x60 under both S and L: overflows a 100x100 sheet.
+		{"overflow under both: skipped", []part{{"1", 60, 60}, {"2", 60, 60}}, sheet100, nil},
+		// 40x60 + 60x60: S gives 120x60 (overflows), L gives 100x60 (fits).
+		{"fits under one operator: kept", []part{{"1", 40, 60}, {"2", 60, 60}}, sheet100, []int{2}},
+		{"no sheet: kept", []part{{"1", 60, 60}, {"2", 60, 60}}, nil, []int{2}},
 	}
-	if got := p.SelectWorstTreeForTest(forest); got != 1 {
-		t.Fatalf("worst tree %d, want 1", got)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			p := newProblem(t, c.parts, c.sheet, 0, 4, 1)
+			got := p.RankCriticalOperatorsForTest([]int{0, 1, S})
+			var idx []int
+			for _, g := range got {
+				idx = append(idx, g.Index)
+			}
+			if fmt.Sprint(idx) != fmt.Sprint(c.want) {
+				t.Errorf("candidates %v, want %v", idx, c.want)
+			}
+		})
+	}
+}
+
+// UT-MUT-14: in a deeper tree, only the joins that overflow under both
+// operators are dropped, and the rest are sorted by relative waste.
+func TestRankCriticalOperatorsMixed(t *testing.T) {
+	// 0: 60x60, 1: 60x60, 2: 10x10, 3: 30x10; sheet 100x100, no kerf.
+	// postfix 0 1 S 2 3 L L: index 2 joins 60x60+60x60 (120x60 either way,
+	// skipped); index 5 joins 10x10+30x10 (L: 30x20, waste 200/600; S: 40x10
+	// fits); index 6 joins the two subtrees (120x60 with 30x20: overflows under
+	// both, skipped).
+	p := newProblem(t, []part{{"1", 60, 60}, {"2", 60, 60}, {"3", 10, 10}, {"4", 30, 10}}, sheet100, 0, 4, 1)
+	got := p.RankCriticalOperatorsForTest([]int{0, 1, S, 2, 3, L, L})
+	if len(got) != 1 || got[0].Index != 5 {
+		t.Fatalf("candidates %v, want only index 5", got)
+	}
+	if want := 200.0 / 600.0; math.Abs(got[0].Score-want) > 1e-12 {
+		t.Errorf("score %g, want %g", got[0].Score, want)
+	}
+}
+
+// UT-MUT-05: the worst tree is the one with the lowest fill of its bounding
+// box. Ranking by the fill of the sheet area was measured worse (design.md §6,
+// GA-07 disproved), so a lone small part, which fills its box, is not chosen.
+func TestSelectWorstTree(t *testing.T) {
+	// parts: 0: 50x50, 1: 30x30, 2: 10x10, 3: 10x10, 4: 10x10; sheet 100x100
+	p := newProblem(t, []part{{"1", 50, 50}, {"2", 30, 30}, {"3", 10, 10}, {"4", 10, 10}, {"5", 10, 10}}, sheet100, 0, 4, 1)
+	cases := []struct {
+		name   string
+		forest []csp2d.NodeView
+		want   int
+	}{
+		{
+			name: "lowest bounding-box fill wins",
+			forest: []csp2d.NodeView{
+				{Postfix: []int{2}, Long: 10, Short: 10}, // fill 1.0
+				{Postfix: []int{3}, Long: 20, Short: 10}, // fill 0.5
+				{Postfix: []int{4}, Long: 25, Short: 10}, // fill 0.4
+			},
+			want: 2,
+		},
+		{
+			// box fill 0.85 (sheet fill 0.34) against box fill 1.0 (sheet fill 0.01)
+			name: "a lone small part counts as full",
+			forest: []csp2d.NodeView{
+				{Postfix: []int{0, 1, csp2d.NumS}, Long: 80, Short: 50},
+				{Postfix: []int{2}, Long: 10, Short: 10},
+			},
+			want: 0,
+		},
+		{
+			name: "tie: the first tree wins",
+			forest: []csp2d.NodeView{
+				{Postfix: []int{2}, Long: 10, Short: 10}, // fill 1.0
+				{Postfix: []int{3}, Long: 20, Short: 10}, // fill 0.5
+				{Postfix: []int{4}, Long: 20, Short: 10}, // fill 0.5
+			},
+			want: 1,
+		},
+		{
+			name:   "single tree",
+			forest: []csp2d.NodeView{{Postfix: []int{0}, Long: 50, Short: 50}},
+			want:   0,
+		},
+	}
+	for _, c := range cases {
+		if got := p.SelectWorstTreeForTest(c.forest); got != c.want {
+			t.Errorf("%s: worst tree %d, want %d", c.name, got, c.want)
+		}
 	}
 }
 

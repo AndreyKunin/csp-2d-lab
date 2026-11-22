@@ -289,3 +289,13 @@ func SetSearchConstantsForTest(retries int) {
 func (p *Csp2dProblemImpl) SearchParametersForTest() (repairWeight, flipWeight int, donorFraction float64) {
 	return p.repairWeight, p.flipWeight, p.donorFraction
 }
+
+// DecodeFitnessForTest decodes in scratch, as a critical-flip trial does, and
+// returns the fitness vector of the decoded forest.
+func (p *Csp2dProblemImpl) DecodeFitnessForTest(postfix []int) ([3]float64, error) {
+	forest, err := p.decodeForest(postfix)
+	if err != nil {
+		return [3]float64{}, err
+	}
+	return p.getFitnessVector(forest), nil
+}

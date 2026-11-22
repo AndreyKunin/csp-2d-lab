@@ -261,6 +261,10 @@ func (p *Csp2dProblemImpl) mutateEliminateAndRepair(parent *Csp2dIndividualImpl,
 	return child, true, nil
 }
 
+// selectWorstTree returns the index of the tree with the lowest fill of its
+// bounding box, Σ part area / bounding area; on a tie the first one. Ranking
+// by the fill of the sheet area instead (the emptiest sheet) was measured and
+// is worse (design.md §6, GA-07 disproved).
 func (p *Csp2dProblemImpl) selectWorstTree(forest []MeteredNode) int {
 	worstIdx := 0
 	worstFill := math.Inf(1)
@@ -475,10 +479,16 @@ func (p *Csp2dProblemImpl) rankCriticalOperators(postfix []int) []OperatorCandid
 			childrenArea := left.GetArea() + right.GetArea()
 			penalty := subtreeArea - childrenArea
 
-			result = append(result, OperatorCandidate{
-				Index: i, // postfix index — can flip directly
-				Score: penalty,
-			})
+			// GA-09: a join that overflows the sheet under both operators is
+			// skipped (flipping it rarely changes the layout), and the rest are
+			// ranked by relative waste (measured: design.md §6, former GA-09).
+			flipped := p.reduce(FlipOperator(id), left, right, p.constraints.sawWidth)
+			if p.isValidMetrics(current, p.constraints) || p.isValidMetrics(flipped, p.constraints) {
+				result = append(result, OperatorCandidate{
+					Index: i, // postfix index — can flip directly
+					Score: penalty / subtreeArea,
+				})
+			}
 
 			stack = append(stack, current)
 		}
