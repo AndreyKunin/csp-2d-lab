@@ -9,6 +9,7 @@ export interface PropertyItem {
     displayName: string;
     value: string;
     tooltip?: string;
+    disabled?: boolean; // overridden by the server: shown empty, not editable, not sent
 }
 
 

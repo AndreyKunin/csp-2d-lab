@@ -5,38 +5,30 @@ Feature: Small and degenerate problems
   Background:
     Given the server is running with config "fast"
 
-  @FT-EDGE-01 @pending
-  Scenario: A single part
-    Given a running simulation for fixture "D01-single" with parameters:
-      | populationSize.min | 100   |
-      | populationSize.max | 60000 |
-      | maxEpochsCount     | 50    |
-    When I wait for job completion within 60 seconds
-    Then the job status is "completed"
-    And every solution is valid
-    And the best solution uses 1 sheet
+  # Fewer than 4 parts have too few distinct layouts for the GA (GA-05): the
+  # server rejects them, like the UI (Model.validate).
+  @FT-EDGE-01
+  Scenario: A single part is rejected
+    Given a start request from fixture "D01-single"
+    When I start the simulation
+    Then the response status is 400
+    And the response message contains "at least 4 parts"
 
-  @FT-EDGE-02 @pending
-  Scenario: Two parts
-    Given a running simulation for fixture "D02-pair" with parameters:
-      | populationSize.min | 100   |
-      | populationSize.max | 60000 |
-      | maxEpochsCount     | 50    |
-    When I wait for job completion within 60 seconds
-    Then the job status is "completed"
-    And the best solution uses 1 sheet
+  @FT-EDGE-02
+  Scenario: Two parts are rejected
+    Given a start request from fixture "D02-pair"
+    When I start the simulation
+    Then the response status is 400
+    And the response message contains "at least 4 parts"
 
-  @FT-EDGE-03 @pending
-  Scenario: Three distinct parts
-    Given a running simulation for fixture "D03-three-distinct" with parameters:
-      | populationSize.min | 100   |
-      | populationSize.max | 60000 |
-      | maxEpochsCount     | 50    |
-    When I wait for job completion within 60 seconds
-    Then the job status is "completed"
-    And the best solution uses 1 sheet
+  @FT-EDGE-03
+  Scenario: Three distinct parts are rejected
+    Given a start request from fixture "D03-three-distinct"
+    When I start the simulation
+    Then the response status is 400
+    And the response message contains "at least 4 parts"
 
-  @FT-EDGE-04 @pending
+  @FT-EDGE-04
   Scenario: Four identical parts with the default population
     Given a running simulation for fixture "D04-four-identical" with parameters:
       | populationSize.min | 100   |
@@ -69,15 +61,14 @@ Feature: Small and degenerate problems
     When I start the simulation
     Then the response status is 400
 
-  # Three identical parts have only 8 distinct genotypes, fewer than the
-  # minimum population, so the population cannot be built today.
-  @FT-EDGE-08 @pending
+  # E08: 4 identical parts of exactly the sheet size, with a saw width.
+  @FT-EDGE-08
   Scenario: Parts exactly the sheet size with a saw width
     Given a running simulation for fixture "E08-exact-sheet-kerf" with maxEpochsCount 50
     When I wait for job completion within 60 seconds
     Then the job status is "completed"
     And every solution is valid
-    And the best solution uses 3 sheets
+    And the best solution uses 4 sheets
     And every sheet of the best solution holds a single part
 
   @FT-EDGE-09

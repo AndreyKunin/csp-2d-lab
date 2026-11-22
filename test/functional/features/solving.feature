@@ -37,26 +37,25 @@ Feature: Solving known instances
     And every solution is valid
     And the best solution uses 3 sheets
 
-  # Three identical parts have only 8 distinct genotypes, fewer than the
-  # minimum population, so the population cannot be built today.
-  @FT-SOLVE-05 @pending
+  # D08: 4 identical parts of exactly the sheet size (40 distinct genotypes; the
+  # small-input overrides make the population 16).
+  @FT-SOLVE-05
   Scenario: Parts of exactly the sheet size
     Given a running simulation for fixture "D08-exact-sheet" with maxEpochsCount 50
     When I wait for job completion within 60 seconds
     Then the job status is "completed"
     And every solution is valid
-    And the best solution uses 3 sheets
+    And the best solution uses 4 sheets
     And every sheet of the best solution holds a single part
 
-  # Only 2 distinct genotypes exist for 2 identical parts, fewer than the
-  # minimum population, so the population cannot be built today.
-  @FT-SOLVE-06 @pending
+  # D09: 4 identical parts that fit the sheet only rotated, one per sheet.
+  @FT-SOLVE-06
   Scenario: Parts that fit only rotated
     Given a running simulation for fixture "D09-rotation" with maxEpochsCount 50
     When I wait for job completion within 60 seconds
     Then the job status is "completed"
     And every solution is valid
-    And the best solution uses 2 sheets
+    And the best solution uses 4 sheets
 
   @FT-SOLVE-07
   Scenario: Unconstrained layout
@@ -100,17 +99,20 @@ Feature: Solving known instances
     Then the job status is "completed"
     And the epoch number is at most 99999
 
-  # With one elite the elite deviation is always 0, so the latched early stop
-  # fires at epoch windowSize even though the run could still improve.
+  # A former early stop latched on the elite deviation, which is always 0 with
+  # one elite, and ended the run at epoch windowSize. D04 has 4 parts, so the
+  # elite count is 1 (small-input override); the run must go through all its
+  # cycles and the championship (the "fast" profile: 10 cycles).
   @FT-SOLVE-12
-  Scenario: The early stop is not premature
-    Given a running simulation for fixture "D13-mixed-20" with parameters:
-      | eliteCount     | 1   |
-      | windowSize     | 10  |
-      | maxEpochsCount | 300 |
+  Scenario: A one-elite run is not cut at epoch windowSize
+    Given a running simulation for fixture "D04-four-identical" with parameters:
+      | windowSize     | 10     |
+      | maxEpochsCount | 100000 |
     When I wait for job completion within 60 seconds
     Then the job status is "completed"
-    And the epoch number is exactly 300
+    And the reported parameter "eliteCount" is 1
+    And the run finished 10 cycles
+    And the championship has started
 
   @FT-SOLVE-13
   Scenario: The best fitness never gets worse during a run

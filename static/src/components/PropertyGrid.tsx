@@ -24,9 +24,10 @@ export const PropertyGrid: React.FC<PropertyGridProps> = (
                             <input
                                 key={row.key+"-input"}
                                 type="text"
-                                value={row.value}
+                                value={row.disabled ? '' : row.value}
+                                disabled={!!row.disabled}
                                 onChange={(e) => update(rowIndex, e.target.value)}
-                                className={validationErrors.get(row.key) ? 'invalidInput' : ''}
+                                className={!row.disabled && validationErrors.get(row.key) ? 'invalidInput' : ''}
                             />
                         </div>
                         <div key={row.key+"-actions"}>

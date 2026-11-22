@@ -100,7 +100,10 @@ export class Simulation {
         }
         for (const definition of PARAMETER_DEFINITIONS) {
             const value = valueOf(p, definition.key);
-            const error = validateParameter(definition.key, value === undefined || value === null ? '' : String(value));
+            if (value === undefined) {
+                continue; // not sent: overridden by the server (overriddenParameters)
+            }
+            const error = validateParameter(definition.key, value === null ? '' : String(value));
             if (error) {
                 errors.push(error);
             }

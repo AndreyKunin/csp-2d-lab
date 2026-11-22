@@ -115,3 +115,45 @@ Feature: Starting a simulation
     Then the response status is 201
     When I wait for job completion within 20 seconds
     Then the job status is "error"
+
+  # Small inputs (GA-05): for n parts in [4, 10] the population minimum is n²/2,
+  # so the population is n², and the elite count is 1 (n = 4) or 2; the maximum
+  # stays as configured; above 10 parts nothing is overridden. The overrides win
+  # over request values.
+  @FT-START-11
+  Scenario: Four parts get population 16 and one elite
+    Given a start request from fixture "D04-four-identical"
+    And the request parameter "populationSize.min" is 500
+    And the request parameter "populationSize.max" is 60000
+    And the request parameter "eliteCount" is 7
+    When I start the simulation
+    Then the response status is 201
+    And the reported parameter "populationSize" is 16
+    And the reported parameter "eliteCount" is 1
+
+  @FT-START-12
+  Scenario: Five parts get population 25 and two elites
+    Given a start request from fixture "D07-identical-multi"
+    When I start the simulation
+    Then the response status is 201
+    And the reported parameter "populationSize" is 25
+    And the reported parameter "eliteCount" is 2
+
+  @FT-START-13
+  Scenario: Twenty parts keep the configured population and the requested elite count
+    Given a start request from fixture "D13-mixed-20"
+    And the request parameter "eliteCount" is 7
+    When I start the simulation
+    Then the response status is 201
+    And the reported parameter "populationSize" is 60
+    And the reported parameter "eliteCount" is 7
+
+  @FT-START-14
+  Scenario: A small input keeps the requested population maximum
+    Given a start request from fixture "D04-four-identical"
+    And the request parameter "populationSize.min" is 3
+    And the request parameter "populationSize.max" is 10
+    When I start the simulation
+    Then the response status is 201
+    And the reported parameter "populationSize" is 10
+    And the reported parameter "eliteCount" is 1

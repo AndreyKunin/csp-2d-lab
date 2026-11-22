@@ -107,7 +107,7 @@ func TestBuildParameters(t *testing.T) {
 		n       int
 		wantPop int
 	}{
-		{"n squared below min", `{}`, 5, 100},
+		{"n squared below min", `{"parameters":{"populationSize":{"min":200,"max":60000}}}`, 12, 200},
 		{"n squared between", `{}`, 50, 2500},
 		{"n squared above max", `{}`, 300, 60000},
 		{"request bounds", `{"parameters":{"populationSize":{"min":30,"max":50}}}`, 20, 50},
@@ -120,7 +120,7 @@ func TestBuildParameters(t *testing.T) {
 			}
 		})
 	}
-	p := decodeRequest(t, `{"parameters":{"mutationRate":0.2,"windowSize":7}}`).BuildParameters(d, 10)
+	p := decodeRequest(t, `{"parameters":{"mutationRate":0.2,"windowSize":7}}`).BuildParameters(d, 100)
 	if p.MutationRate != 0.2 || p.WindowSize != 7 || p.EliteCount != 10 || p.MaxEpochsCount != 20000 {
 		t.Fatalf("partial override: %+v", p)
 	}
@@ -166,5 +166,76 @@ func TestProductionConfigurationParses(t *testing.T) {
 	}
 	if cfg.Server.StaticDir == "" {
 		t.Error("staticDir is empty")
+	}
+}
+
+// UT-REQ-06: small inputs (GA-05). For n parts in [4, 10] the population
+// minimum is n²/2 (so the population is n²); the maximum stays as configured.
+// The elite count is 1 for n < 5, 2 for n in [5, 10], else as configured. The
+// overrides win over request values.
+func TestSmallInputOverrides(t *testing.T) {
+	d := defaults(t) // min 100, max 60000, elite 10
+	cases := []struct {
+		name      string
+		body      string
+		n         int
+		wantPop   int
+		wantElite int
+	}{
+		{"n=3: below the minimum part count, elite only", `{}`, 3, 100, 1},
+		{"n=4", `{}`, 4, 16, 1},
+		{"n=4 ignores a request min and elite", `{"parameters":{"populationSize":{"min":500,"max":60000},"eliteCount":7}}`, 4, 16, 1},
+		{"n=4 keeps a request max", `{"parameters":{"populationSize":{"min":500,"max":10}}}`, 4, 10, 1},
+		{"n=5", `{}`, 5, 25, 2},
+		{"n=10", `{}`, 10, 100, 2},
+		{"n=10 ignores a request elite", `{"parameters":{"eliteCount":7}}`, 10, 100, 2},
+		{"n=11: min and elite as configured", `{}`, 11, 121, 10},
+		{"n=11 keeps a request min and elite", `{"parameters":{"populationSize":{"min":300,"max":60000},"eliteCount":7}}`, 11, 300, 7},
+		{"n=100: elite as requested", `{"parameters":{"eliteCount":7}}`, 100, 10000, 7},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			p := decodeRequest(t, c.body).BuildParameters(d, c.n)
+			if p.PopulationSize != c.wantPop || p.EliteCount != c.wantElite {
+				t.Fatalf("population %d, elite %d; want %d, %d", p.PopulationSize, p.EliteCount, c.wantPop, c.wantElite)
+			}
+		})
+	}
+}
+
+// UT-REQ-07: a request that sends only the population maximum (the UI leaves an
+// overridden minimum out) keeps the configured minimum for n > 10.
+func TestPopulationMaxOnly(t *testing.T) {
+	d := defaults(t)
+	if p := decodeRequest(t, `{"parameters":{"populationSize":{"max":150}}}`).BuildParameters(d, 12); p.PopulationSize != 144 {
+		t.Fatalf("population %d, want 144 (n², between the configured min 100 and max 150)", p.PopulationSize)
+	}
+	if p := decodeRequest(t, `{"parameters":{"populationSize":{"max":120}}}`).BuildParameters(d, 12); p.PopulationSize != 120 {
+		t.Fatalf("population %d, want 120 (capped by max)", p.PopulationSize)
+	}
+	if p := decodeRequest(t, `{"parameters":{"populationSize":{"max":60000}}}`).BuildParameters(d, 6); p.PopulationSize != 36 {
+		t.Fatalf("population %d, want 36 (n = 6: min n²/2)", p.PopulationSize)
+	}
+}
+
+// UT-REQ-08: the total part count is the sum of the counts (the start request
+// needs at least mvc.MinPartsCount).
+func TestPartsCount(t *testing.T) {
+	cases := []struct {
+		body string
+		want int
+	}{
+		{`{"parts":[]}`, 0},
+		{`{"parts":[{"label":"1","width":10,"length":10,"count":3}]}`, 3},
+		{`{"parts":[{"label":"1","width":10,"length":10,"count":2},{"label":"2","width":5,"length":5,"count":2}]}`, 4},
+		{`{"parts":[{"label":"1","width":10,"length":10,"count":-3}]}`, -3},
+	}
+	for _, c := range cases {
+		if got := decodeRequest(t, c.body).PartsCount(); got != c.want {
+			t.Errorf("%s: parts count %d, want %d", c.body, got, c.want)
+		}
+	}
+	if mvc.MinPartsCount != 4 {
+		t.Fatalf("MinPartsCount %d, want 4", mvc.MinPartsCount)
 	}
 }

@@ -38,8 +38,8 @@ export const PARAMETER_DEFINITIONS: ParameterDefinition[] = [
         tooltip: 'Mutation rate is the probability that a single element of the solution will be altered during the creation of a new offspring solution.',
     },
     {
-        key: 'crossoverRate', displayName: 'Crossover rate', rule: 'float[0-1]', runtime: true,
-        tooltip: 'Share of the non-elite offspring made by crossover, from 0 to 1. The rest are copies of tournament-selected individuals, changed by mutation only.',
+        key: 'crossoverRate', displayName: 'Crossover rate', rule: 'float(0-1]', runtime: true,
+        tooltip: 'Share of the non-elite offspring made by crossover, greater than 0 and at most 1. The rest are copies of tournament-selected individuals, changed by mutation only.',
     },
     {
         key: 'maxEpochsCount', displayName: 'Number of generations', rule: 'int[1-)', runtime: true,
@@ -66,10 +66,27 @@ export const PARAMETER_DEFINITIONS: ParameterDefinition[] = [
         tooltip: 'Mutation budget units that one successful operator flip costs (a cut direction that wastes the most area is flipped). Larger values mean fewer mutations per generation. A whole number, 1 or more.',
     },
     {
-        key: 'donorFraction', displayName: 'Donor fraction', rule: 'float[0-1]', runtime: true,
-        tooltip: 'Largest part of a parent that crossover copies into a child, as a share of the parts: from 0 to 1.',
+        key: 'donorFraction', displayName: 'Donor fraction', rule: 'float(0-1]', runtime: true,
+        tooltip: 'Largest part of a parent that crossover copies into a child, as a share of the parts: greater than 0 and at most 1.',
     },
 ];
+
+// overriddenParameters returns the keys the server replaces for n parts, so
+// the start form disables them and does not send them. It mirrors
+// smallInputOverrides in mvc/request.go: for n in [4, 10] the population
+// minimum is n²/2 and the elite count is 1 (n = 4) or 2. Below 4 parts the
+// input is invalid (Model.validate), so nothing is overridden.
+export function overriddenParameters(n: number): Set<string> {
+    const keys = new Set<string>();
+    if (n < 4) {
+        return keys;
+    }
+    if (n <= 10) {
+        keys.add('populationSize.min');
+        keys.add('eliteCount');
+    }
+    return keys;
+}
 
 // ---- Rule DSL ----------------------------------------------------------------
 

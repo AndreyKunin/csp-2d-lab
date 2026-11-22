@@ -6,6 +6,7 @@ import (
 	"csp2d/util"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -25,6 +26,12 @@ func (app *WebApp) StartSimulation(c echo.Context) error {
 	if err := c.Bind(&request); err != nil {
 		util.Warning.Println(err)
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+
+	if n := request.PartsCount(); n < MinPartsCount {
+		message := fmt.Sprintf("at least %d parts are required, got %d", MinPartsCount, n)
+		util.Warning.Println(message)
+		return echo.NewHTTPError(http.StatusBadRequest, message)
 	}
 
 	inputs, err := request.BuildInputs()

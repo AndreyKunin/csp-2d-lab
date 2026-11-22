@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/cucumber/godog"
@@ -23,6 +24,7 @@ func registerLifecycleSteps(ctx *godog.ScenarioContext, w *World) {
 	ctx.Step(`^the job status is "([^"]*)"$`, w.jobStatusIs)
 	ctx.Step(`^the response job status is "([^"]*)"$`, w.responseJobStatusIs)
 	ctx.Step(`^the response message is "([^"]*)"$`, w.responseMessageIs)
+	ctx.Step(`^the response message contains "([^"]*)"$`, w.responseMessageContains)
 	ctx.Step(`^the job id is a 32-character hex string$`, w.jobIDIsHex)
 	ctx.Step(`^the response has RFC 3339 timestamps$`, w.responseHasTimestamps)
 	ctx.Step(`^the epoch number does not change for (\d+(?:\.\d+)?) seconds?$`, w.epochDoesNotChange)
@@ -201,6 +203,23 @@ func (w *World) responseMessageIs(want string) error {
 	}
 	if st.Message != want {
 		return fmt.Errorf("response message is %q, want %q", st.Message, want)
+	}
+	return nil
+}
+
+// responseMessageContains checks the "message" field of the last response
+// (a job status or an error body).
+func (w *World) responseMessageContains(want string) error {
+	resp, err := w.last()
+	if err != nil {
+		return err
+	}
+	var body api.ErrorBody
+	if err := resp.Decode(&body); err != nil {
+		return err
+	}
+	if !strings.Contains(body.Message, want) {
+		return fmt.Errorf("response message %q does not contain %q", body.Message, want)
 	}
 	return nil
 }
