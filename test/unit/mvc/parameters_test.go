@@ -262,6 +262,11 @@ func TestValidateRequest(t *testing.T) {
 		{"zero sheet", `{` + parts4 + `,"sheets":{"width":0,"length":200}}`, []string{"sheet width and length must be greater than 0"}},
 		{"negative saw width", `{` + parts4 + `,"sawWidth":-0.5}`, []string{"sawWidth must be at least 0, got -0.5"}},
 		{"invalid parameter", `{` + parts4 + `,"parameters":{"eliteCount":0}}`, []string{"eliteCount must be a whole number, at least 1, got 0"}},
+		{"a label repeated with the same sizes", `{"parts":[{"label":"1","width":10,"length":20,"count":2},{"label":"1","width":20,"length":10,"count":2}]}`, nil},
+		{"a label repeated with different sizes", `{"parts":[{"label":"1","width":10,"length":20,"count":2},{"label":"1","width":10,"length":30,"count":2}]}`,
+			[]string{`part 2: label "1" is used by part 1 with another size (10 x 20), got 10 x 30`}},
+		{"a label repeated in a count 0 row", `{"parts":[{"label":"1","width":10,"length":20,"count":4},{"label":"1","width":10,"length":30,"count":0}]}`,
+			[]string{`part 2: label "1" is used by part 1 with another size (10 x 20), got 10 x 30`}},
 		{"several problems", `{"parts":[{"label":"x","width":0,"length":1,"count":2}],"sawWidth":-1,"parameters":{"windowSize":0}}`,
 			[]string{"windowSize must be", `label must be a whole number, got "x"`, "width and length must be greater than 0", "at least 4 parts are required, got 2", "sawWidth must be at least 0"}},
 	}

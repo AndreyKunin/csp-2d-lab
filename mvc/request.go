@@ -56,6 +56,9 @@ const MinPartsCount = 4
 //   - the parameters against their rules (application.yaml, ParameterSpecs);
 //   - the total part count: from MinPartsCount to maxParts (inputs.maxPartsCount);
 //   - each part: a whole-number label, positive sizes, a count of at least 0;
+//   - a label repeated in several rows has the same size in each (BE-08): the
+//     result names leaves by label, and parts sharing a label are treated as
+//     interchangeable in duplicate detection (labelRank);
 //   - the sheet, when given: positive sizes; the saw width: at least 0.
 //
 // It runs before BuildInputs, so a huge count is rejected before anything is
@@ -66,7 +69,19 @@ func (r *Request) Validate(specs ParameterSpecs, maxParts int) error {
 		problems = append(problems, err.Error())
 	}
 	countsValid := true
+	type labelled struct {
+		row         int
+		long, short float64
+	}
+	byLabel := make(map[string]labelled, len(r.Parts))
 	for i, part := range r.Parts {
+		long, short := math.Max(part.Width, part.Length), math.Min(part.Width, part.Length)
+		if first, seen := byLabel[part.Label]; !seen {
+			byLabel[part.Label] = labelled{i + 1, long, short}
+		} else if first.long != long || first.short != short {
+			problems = append(problems, fmt.Sprintf("part %d: label %q is used by part %d with another size (%g x %g), got %g x %g",
+				i+1, part.Label, first.row, r.Parts[first.row-1].Width, r.Parts[first.row-1].Length, part.Width, part.Length))
+		}
 		if _, err := strconv.Atoi(part.Label); err != nil {
 			problems = append(problems, fmt.Sprintf("part %d: label must be a whole number, got %q", i+1, part.Label))
 		}

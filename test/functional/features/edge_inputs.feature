@@ -55,11 +55,14 @@ Feature: Small and degenerate problems
     Then the job status is "completed"
     And every solution is valid
 
-  @FT-EDGE-07 @pending
+  # The result names leaves by label, so one label must mean one size (BE-08).
+  # The UI numbers its rows itself; only an API client can send this.
+  @FT-EDGE-07
   Scenario: The same label with different sizes is rejected
     Given a start request from fixture "X11-duplicate-labels"
     When I start the simulation
     Then the response status is 400
+    And the error message contains "is used by part 1 with another size (10 x 20), got 10 x 30"
 
   # E08: 4 identical parts of exactly the sheet size, with a saw width.
   @FT-EDGE-08
