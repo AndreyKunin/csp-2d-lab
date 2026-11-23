@@ -46,7 +46,7 @@ export const PARAMETER_DEFINITIONS: ParameterDefinition[] = [
         tooltip: 'Maximum nimber of epochs (generations) in the simulation. Simulation is a process that never halts until manually stopped. We can auto-stop the process when it reaches the maximum number of epochs.',
     },
     {
-        key: 'windowSize', displayName: 'Window size', rule: 'int[1-250]', runtime: true,
+        key: 'windowSize', displayName: 'Window size', rule: 'int[1-250]', runtime: false,
         tooltip: 'Number of epochs without improvement of the best solution that ends a cycle (and the championship). Also the length of the sliding window that smooths the charted metrics. From 1 to 250.',
     },
     {

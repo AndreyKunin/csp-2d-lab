@@ -28,6 +28,11 @@ func (app *WebApp) StartSimulation(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
+	if err := request.ValidateWindowSize(); err != nil {
+		util.Warning.Println(err)
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+
 	if n := request.PartsCount(); n < MinPartsCount {
 		message := fmt.Sprintf("at least %d parts are required, got %d", MinPartsCount, n)
 		util.Warning.Println(message)
@@ -118,6 +123,10 @@ func (app *WebApp) ConfigureSimulation(c echo.Context) error {
 	var request Request
 
 	if err := c.Bind(&request); err != nil {
+		util.Warning.Println(err)
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+	if err := request.ValidateWindowSize(); err != nil {
 		util.Warning.Println(err)
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}

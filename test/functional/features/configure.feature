@@ -133,7 +133,7 @@ Feature: Runtime reconfiguration
       | mutationRate | 0     |
       | mutationRate | 1     |
 
-  @FT-CFG-08 @pending
+  @FT-CFG-08
   Scenario: A window size of 0 is rejected
     Given a long-running simulation for fixture "D13-mixed-20"
     When I configure the simulation with:

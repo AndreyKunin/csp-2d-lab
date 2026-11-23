@@ -4,6 +4,7 @@ import (
 	"csp2d/ga"
 	"csp2d/problem/csp2d"
 	"csp2d/util"
+	"fmt"
 	"math"
 	"strconv"
 )
@@ -48,6 +49,15 @@ type Request struct {
 // parts have too few distinct layouts for the GA (GA-05). The UI checks the
 // same limit (Model.validate, MIN_TOTAL_COUNT).
 const MinPartsCount = 4
+
+// ValidateWindowSize rejects a window size below 1: addEpoch would index -1
+// and the job would panic (MET-03). An omitted window size is valid.
+func (r *Request) ValidateWindowSize() error {
+	if r.Parameters != nil && r.Parameters.WindowSize != nil && *r.Parameters.WindowSize < 1 {
+		return fmt.Errorf("windowSize must be at least 1, got %d", *r.Parameters.WindowSize)
+	}
+	return nil
+}
 
 // PartsCount returns the total part count of the request: the sum of the
 // counts, before BuildInputs expands them.

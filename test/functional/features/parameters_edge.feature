@@ -97,7 +97,7 @@ Feature: Boundary simulation parameters
     And the epoch number is exactly 1
     And every solution is valid
 
-  @FT-PAR-10 @pending
+  @FT-PAR-10
   Scenario: A window size of 0 is rejected
     Given a start request from fixture "D13-mixed-20"
     And the request parameter "windowSize" is 0

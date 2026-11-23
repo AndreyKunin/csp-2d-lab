@@ -265,7 +265,7 @@ func computeEpochState(simulation *Simulation, population *problem.Population) *
 	var avgEliteFitness = 0.0
 	var fitnessVariance = 0.0
 	var eliteFitnessVariance = 0.0
-	for i := 0; i < size; i++ {
+	for i := range size {
 		if i < eliteCount {
 			avgEliteFitness += species[i].GetFitnessValue()
 		}
@@ -273,7 +273,7 @@ func computeEpochState(simulation *Simulation, population *problem.Population) *
 	}
 	avgFitness = avgFitness / float64(size)
 	avgEliteFitness = avgEliteFitness / float64(eliteCount)
-	for i := 0; i < size; i++ {
+	for i := range size {
 		if i < eliteCount {
 			eliteFitnessVariance += math.Pow(species[i].GetFitnessValue()-avgEliteFitness, 2)
 		}
