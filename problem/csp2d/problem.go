@@ -36,6 +36,9 @@ type Csp2dProblemImpl struct {
 	// the same rank — this matches the original toString-based equivalence.
 	// Ranks start at 1; 0 is reserved.
 	labelRank []int32
+
+	// Scratch buffers of NewRandomIndividual (PERF-01), 2n-1 ints each.
+	randShuffled, randPostfix, randPending []int
 }
 
 func NewCsp2dProblem(inputs []InputDefinition, constraints *Constraints) problem.Problem {
@@ -127,9 +130,17 @@ func (p *Csp2dProblemImpl) NewRandomIndividual(rnd *rand.Rand) (problem.Individu
 	idsSize := p.GetInputsSize()
 	postfixLen := idsSize*2 - 1 // the number of Ops is always idsSize - 1 for the binary tree
 
-	for j := 0; j < MaxIndividualCreationRetries; j++ {
-		shuffledPostfix := make([]int, postfixLen)
-		for i := 0; i < idsSize; i++ {
+	// Scratch buffers reused across calls (the problem is single-goroutine, like
+	// the arena). The returned individual gets its own copy via GenAlloc.
+	if cap(p.randShuffled) < postfixLen {
+		p.randShuffled = make([]int, postfixLen)
+		p.randPostfix = make([]int, postfixLen)
+		p.randPending = make([]int, postfixLen)
+	}
+	shuffledPostfix := p.randShuffled[:postfixLen]
+
+	for range MaxIndividualCreationRetries {
+		for i := range idsSize {
 			shuffledPostfix[i] = i
 		}
 		for i := idsSize; i < postfixLen; i++ {
@@ -139,43 +150,36 @@ func (p *Csp2dProblemImpl) NewRandomIndividual(rnd *rand.Rand) (problem.Individu
 			shuffledPostfix[i], shuffledPostfix[j] = shuffledPostfix[j], shuffledPostfix[i]
 		})
 
-		// constructing a valid postfix notation directly from
-		// a pre-randomized slice of operands (>=0) and operators (<0),
-
-		// Each entry in completeStack is a postfix fragment (slice of ints).
-		completeStack := make([][]int, 0, postfixLen)
-		incompleteStack := make([]int, 0, postfixLen)
-
+		// Build a valid postfix from the pre-randomized operands (>=0) and
+		// operators (<0) in O(n). Operands are emitted as they come; operators
+		// wait on a stack and one is emitted whenever two complete subtrees are
+		// available. A merged subtree "left right op" is always the latest run
+		// of the output, so emitting op is the whole merge (PERF-01): no
+		// fragment slices are built.
+		postfix := p.randPostfix[:0]
+		pending := p.randPending[:0]
+		complete := 0 // complete subtrees on the (implicit) stack
 		for _, element := range shuffledPostfix {
 			if element < 0 { // operator
-				incompleteStack = append(incompleteStack, element)
+				pending = append(pending, element)
 			} else { // operand
-				completeStack = append(completeStack, []int{element})
+				postfix = append(postfix, element)
+				complete++
 			}
-			for len(completeStack) > 1 && len(incompleteStack) > 0 {
-				op := incompleteStack[len(incompleteStack)-1]
-				incompleteStack = incompleteStack[:len(incompleteStack)-1]
-
-				right := completeStack[len(completeStack)-1]
-				left := completeStack[len(completeStack)-2]
-				completeStack = completeStack[:len(completeStack)-2]
-
-				// postfix: left right op
-				merged := make([]int, 0, len(left)+len(right)+1)
-				merged = append(merged, left...)
-				merged = append(merged, right...)
-				merged = append(merged, op)
-				completeStack = append(completeStack, merged)
+			for complete > 1 && len(pending) > 0 {
+				postfix = append(postfix, pending[len(pending)-1])
+				pending = pending[:len(pending)-1]
+				complete--
 			}
 		}
-		if len(incompleteStack) > 0 || len(completeStack) != 1 {
+		if len(pending) > 0 || complete != 1 {
 			return nil, errors.New("invalid elements: unable to build a postfix notation")
 		}
 		// Protected attempts are rejected before they take arena space (MEM-02).
-		if p.isProtected(completeStack[0]) {
+		if p.isProtected(postfix) {
 			continue
 		}
-		return newIndividual(p.arena.GenAlloc(completeStack[0])), nil
+		return newIndividual(p.arena.GenAlloc(postfix)), nil
 	}
 	// cannot create even a random individual, the gene pool is full
 	return nil, nil
