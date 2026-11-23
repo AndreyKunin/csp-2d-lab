@@ -64,3 +64,50 @@ func TestProductionPprofIsOff(t *testing.T) {
 		t.Fatal("application.yaml enables pprof")
 	}
 }
+
+func do(t *testing.T, e *echo.Echo, method, path string) *httptest.ResponseRecorder {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(method, path, nil))
+	return rec
+}
+
+// UT-WEB-02: a wrong HTTP method on an /api route answers 405 with an Allow
+// header listing the methods whose routes match the path (BE-09); an unknown
+// /api path answers 404; other paths still reach the static catch-all (GET /*,
+// as e.Static in the web build and e.GET("/*") in the desktop build).
+func TestAPIMethodMismatchIs405(t *testing.T) {
+	e := echo.New()
+	e.GET("/*", func(c echo.Context) error { return c.String(http.StatusOK, "static") })
+	mvc.ConfigureRoutes(e, mvc.WebApp{})
+
+	cases := []struct {
+		method, path string
+		code         int
+		allow        string
+	}{
+		// DELETE /api/v1/simulation/:id matches "start" as a job id.
+		{http.MethodGet, "/api/v1/simulation/start", http.StatusMethodNotAllowed, "POST, DELETE"},
+		{http.MethodPut, "/api/v1/simulation/start", http.StatusMethodNotAllowed, "POST, DELETE"},
+		{http.MethodPost, "/api/v1/simulation/pause/abc", http.StatusMethodNotAllowed, "GET"},
+		{http.MethodGet, "/api/v1/simulation/configure/abc", http.StatusMethodNotAllowed, "POST"},
+		{http.MethodPost, "/api/v1/simulation/abc", http.StatusMethodNotAllowed, "DELETE"},
+		{http.MethodGet, "/api/v1/pdf/generate", http.StatusMethodNotAllowed, "POST"},
+		{http.MethodPost, "/api/v1/service/parameter-definitions", http.StatusMethodNotAllowed, "GET"},
+		{http.MethodGet, "/api/v1/nope", http.StatusNotFound, ""},
+		{http.MethodPost, "/api/v1/nope", http.StatusNotFound, ""},
+		{http.MethodGet, "/api", http.StatusOK, ""}, // not under /api/: the catch-all
+	}
+	for _, c := range cases {
+		rec := do(t, e, c.method, c.path)
+		if rec.Code != c.code || rec.Header().Get("Allow") != c.allow {
+			t.Errorf("%s %s = %d, Allow %q; want %d, Allow %q (body %s)", c.method, c.path, rec.Code, rec.Header().Get("Allow"), c.code, c.allow, rec.Body)
+		}
+	}
+	if rec := do(t, e, http.MethodGet, "/index.html"); rec.Code != http.StatusOK || rec.Body.String() != "static" {
+		t.Errorf("GET /index.html = %d %q, want the catch-all", rec.Code, rec.Body)
+	}
+	if rec := do(t, e, http.MethodGet, "/api/v1/service/parameter-definitions"); rec.Code != http.StatusOK {
+		t.Errorf("GET parameter-definitions = %d, want 200", rec.Code)
+	}
+}

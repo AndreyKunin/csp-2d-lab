@@ -51,8 +51,10 @@ Feature: Service endpoints
     When I send a "GET" request to "/api/v1/nope"
     Then the response status is 404
 
-  # Currently 404: the static catch-all route answers before the method check.
-  @FT-SVC-06 @pending
+  # BE-09: the route groups' catch-alls answered 404. The Allow header lists
+  # the methods whose routes match: POST start, and DELETE /:id ("start" as an id).
+  @FT-SVC-06
   Scenario: Wrong HTTP method on a simulation route
     When I send a "GET" request to "/api/v1/simulation/start"
     Then the response status is 405
+    And the response header "Allow" is "POST, DELETE"

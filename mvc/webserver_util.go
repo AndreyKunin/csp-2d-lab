@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/pprof"
+	"strings"
 
 	"github.com/labstack/echo/v4"
 )
@@ -39,9 +40,66 @@ func ConfigureRoutes(e *echo.Echo, webApp WebApp) {
 	pdfGroup.Use(AddNoCacheHeaders())
 	pdfGroup.POST("/generate", webApp.GeneratePdf)
 
+	// A group with middleware registers catch-all "route not found" routes
+	// (<prefix> and <prefix>/*) that answer 404, also for a path that exists
+	// with another method. Replace them, so a wrong method answers 405 (BE-09).
+	for _, g := range []*echo.Group{apiV1, service, simulation, pdfGroup} {
+		g.RouteNotFound("", apiFallback(e))
+		g.RouteNotFound("/*", apiFallback(e))
+	}
+
 	if webApp.Configuration.Server.Pprof {
 		mountPprof(e)
 	}
+}
+
+// apiFallback answers an /api request that no route of its method matches:
+// 405 with an Allow header listing the methods of the /api routes whose
+// pattern matches the path, or 404 when none does.
+func apiFallback(e *echo.Echo) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		path := c.Request().URL.Path
+		var allowed []string
+		for _, method := range []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete} {
+			for _, r := range e.Routes() {
+				if r.Method == method && strings.HasPrefix(r.Path, "/api/") && routeMatches(r.Path, path) {
+					allowed = append(allowed, method)
+					break
+				}
+			}
+		}
+		if len(allowed) == 0 {
+			return echo.ErrNotFound
+		}
+		c.Response().Header().Set(echo.HeaderAllow, strings.Join(allowed, ", "))
+		return echo.ErrMethodNotAllowed
+	}
+}
+
+// routeMatches reports whether path matches an Echo route pattern: a :param
+// matches one non-empty segment, * matches the rest, other segments match
+// literally.
+func routeMatches(pattern, path string) bool {
+	patternParts := strings.Split(strings.Trim(pattern, "/"), "/")
+	pathParts := strings.Split(strings.Trim(path, "/"), "/")
+	for i, p := range patternParts {
+		if p == "*" {
+			return true
+		}
+		if i >= len(pathParts) {
+			return false
+		}
+		if strings.HasPrefix(p, ":") {
+			if pathParts[i] == "" {
+				return false
+			}
+			continue
+		}
+		if p != pathParts[i] {
+			return false
+		}
+	}
+	return len(patternParts) == len(pathParts)
 }
 
 // mountPprof serves the net/http/pprof handlers at /debug/pprof/ (BE-06):
