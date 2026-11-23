@@ -146,8 +146,8 @@ export class ChartsMediator {
             bestSeriesY: null,
             avgSeriesY: statistics?.state?.windowState.averageFitness ?? 0,
             devSeriesY: statistics?.state?.windowState.averageFitnessDeviation ?? 0,
-            avgESeriesY: statistics?.state?.epochState.averageEliteFitness ?? 0,
-            devESeriesY: statistics?.state?.epochState.eliteFitnessDeviation ?? 0,
+            avgESeriesY: statistics?.state?.windowState.averageEliteFitness ?? 0,
+            devESeriesY: statistics?.state?.windowState.eliteFitnessDeviation ?? 0,
         }
     }
 

@@ -1,9 +1,17 @@
 import React, {useEffect, useState} from 'react';
 
+// ResultRow is one row of the results list: its cells and the index of its
+// solution in the full list of solutions (FE-01: rows of equal solutions are
+// hidden, so the row's position is not the solution's index).
+export interface ResultRow {
+    index: number;
+    cells: string[];
+}
+
 interface ResultsGridProps {
     id: string;
     units: string;
-    data: string[][];
+    data: ResultRow[];
     selectedSolution: number | null;
     onSolutionSelect: (index: number) => void;
 }
@@ -13,7 +21,7 @@ export const ResultsGrid: React.FC<ResultsGridProps> = (
 
     useEffect(() => {
         if (data.length > 0) {
-            onSolutionSelect(0);
+            onSolutionSelect(data[0].index);
         }
     }, [data]);
 
@@ -24,12 +32,12 @@ export const ResultsGrid: React.FC<ResultsGridProps> = (
                 <div>Sheets</div>
                 <div>Area, {units}<sup>2</sup></div>
             </div>
-            {data.map((row, rowIndex) => (
-                <div key={id+rowIndex} className={selectedSolution === rowIndex ? 'selectedLayout' : ''}>
-                    {row.map((cell, colIndex) => (
+            {data.map(row => (
+                <div key={id+row.index} className={selectedSolution === row.index ? 'selectedLayout' : ''}>
+                    {row.cells.map((cell, colIndex) => (
                         <div
-                            key={id+rowIndex+"c"+colIndex}
-                            onClick={() => onSolutionSelect(rowIndex)}
+                            key={id+row.index+"c"+colIndex}
+                            onClick={() => onSolutionSelect(row.index)}
                         >
                             {cell}
                         </div>

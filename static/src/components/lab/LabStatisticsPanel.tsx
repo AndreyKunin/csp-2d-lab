@@ -13,9 +13,11 @@ export const LabStatisticsPanel: React.FC<LabStatisticsPanelProps> = ({ dashboar
     const [state, setState] = useState(dashboardState.getStatistics()?.state);
     const [parameters, setParameters] = useState(dashboardState.getStatistics()?.parameters);
 
+    // Recomputed on every status update: the subscriber replaces state each poll
+    // (with startTime alone, Duration kept its first value, FE-05).
     const duration = useMemo(() =>
         startTime ? new Date(Date.now() - startTime.valueOf()).toISOString().substring(11, 19) : ''
-        , [startTime]
+        , [startTime, state]
     );
 
     useEffect(() => {

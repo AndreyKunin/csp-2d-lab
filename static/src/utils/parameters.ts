@@ -59,6 +59,57 @@ export function getSimulationParameters(items: PropertyItem[]): SimulationParame
     return parameters as SimulationParameters;
 }
 
+// validateRuntimeParameters checks the Edit dialog's values: every value against
+// its rule, then (when all are valid) against the running job, whose population
+// size and window size the dialog cannot change: the elite count is below the
+// population size (the server's rule, ValidateBuiltParameters), and the number of
+// generations is at least the window size (as the start form checks). It returns
+// the messages for the user, none when the values are valid (FE-02).
+export function validateRuntimeParameters(items: PropertyItem[], running?: SimulationRuntimeParameters): string[] {
+    const messages: string[] = [];
+    for (const item of items) {
+        const error = validateParameter(item.key, item.value);
+        if (error) {
+            messages.push(error);
+        }
+    }
+    if (messages.length > 0 || !running) {
+        return messages;
+    }
+    const value = (key: string) => {
+        const item = items.find(i => i.key === key);
+        return item ? Number(item.value) : undefined;
+    };
+    const eliteCount = value('eliteCount');
+    if (eliteCount !== undefined && eliteCount >= running.populationSize) {
+        messages.push(`Elite count must be less than the population size (${running.populationSize}).`);
+    }
+    const maxEpochsCount = value('maxEpochsCount');
+    if (maxEpochsCount !== undefined && maxEpochsCount < running.windowSize) {
+        messages.push(`Number of generations must be at least the window size (${running.windowSize}).`);
+    }
+    return messages;
+}
+
+// submitRuntimeParameters validates the Edit dialog's values and, when they are
+// valid, submits them (configure). It returns the messages to show: the
+// validation errors, or the error of the submit; none when it succeeded.
+export async function submitRuntimeParameters(
+    items: PropertyItem[], running: SimulationRuntimeParameters | undefined,
+    submit: (parameters: SimulationParameters) => Promise<void>
+): Promise<string[]> {
+    const messages = validateRuntimeParameters(items, running);
+    if (messages.length > 0) {
+        return messages;
+    }
+    try {
+        await submit(getSimulationParameters(items));
+        return [];
+    } catch (error) {
+        return [error instanceof Error ? error.message : String(error)];
+    }
+}
+
 // validateSimulationParameters checks one parameter value against its rule
 // (the server's rules, parameterDefinitions.ts) and records the result for the grid. allowEmpty
 // accepts an empty value (while the user types); a submit passes false.

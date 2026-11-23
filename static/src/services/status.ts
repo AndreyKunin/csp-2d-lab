@@ -9,6 +9,29 @@ import {
     SimulationStatus
 } from "../utils/simulation";
 
+// finishOnce wraps the end of a job (fetch the result, delete the job) so that
+// it runs once (FE-04). The Lab's Stop triggers it twice: from the status
+// subscriber that finishMonitoring notifies, and explicitly from onStop. Both
+// triggers are needed (before the first status poll finishMonitoring notifies
+// nobody), so neither is removed: concurrent callers share one run, a call
+// after it succeeded does nothing, and a call after it failed retries.
+export function finishOnce(finish: () => Promise<void>): () => Promise<void> {
+    let running: Promise<void> | null = null;
+    let done = false;
+    return () => {
+        if (done) {
+            return Promise.resolve();
+        }
+        if (!running) {
+            running = finish().then(
+                () => { done = true; },
+                error => { running = null; throw error; },
+            );
+        }
+        return running;
+    };
+}
+
 export class DashboardState {
     private readonly simulationId: string;
     private readonly initialStatus: SimulationStatus;
