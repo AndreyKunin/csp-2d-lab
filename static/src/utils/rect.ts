@@ -160,9 +160,13 @@ export const getTree = (
     }
 
     // If the sheet is bigger than the packed parts, add a faux (waste) rect to fill the sheet.
+    // Like every RectNode, the sheet is long side x short side, whichever way its width
+    // and length were entered (the server normalises it the same way, BuildConstraints).
     if (model.sheets) {
-        const sheetWidth = parseSize(model.sheets.width, enclosingRect.isFraction);
-        const sheetHeight = parseSize(model.sheets.length, enclosingRect.isFraction);
+        const enteredWidth = parseSize(model.sheets.width, enclosingRect.isFraction);
+        const enteredLength = parseSize(model.sheets.length, enclosingRect.isFraction);
+        const sheetWidth = math.max(enteredWidth, enteredLength);
+        const sheetHeight = math.min(enteredWidth, enteredLength);
 
         if (math.larger(sheetHeight, enclosingRect.height)) {
             const fauxRect = new RectNode("-", sheetWidth, math.subtract(sheetHeight, enclosingRect.height), 0.0);

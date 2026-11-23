@@ -71,3 +71,6 @@ secrets/
 # ── Internal ───────────────────────────────────────────────────
 test/experiment/
 CLAUDE.md
+
+# Frontend unit tests: compiled output (cd static && npm test)
+/static/test-build/
