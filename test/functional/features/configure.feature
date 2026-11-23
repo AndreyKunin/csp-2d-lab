@@ -57,7 +57,7 @@ Feature: Runtime reconfiguration
     Then the response status is 200
     And the epoch number exceeds 3000 within 60 seconds
 
-  @FT-CFG-05 @pending
+  @FT-CFG-05
   Scenario Outline: Configure without populationSize keeps the population size
     Given a running simulation for fixture "D13-mixed-20" with parameters:
       | populationSize.min | <size>    |

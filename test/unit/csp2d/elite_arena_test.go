@@ -57,8 +57,9 @@ func TestEliteArenaSizedToTwoPostfixes(t *testing.T) {
 
 // UT-ARN-21: an individual that still references an old elite buffer is never
 // overwritten when the buffer is reused. Normally every demoted elite is
-// replaced within an epoch, but a population that is not fully replaced (BE-01:
-// a shrinking reconfigure) keeps one; reusing its buffer would corrupt it.
+// replaced within an epoch, but a population that is not fully replaced (a
+// shrinking reconfigure did that before BE-01 was fixed) keeps one; reusing its
+// buffer would corrupt it.
 func TestEliteBufferStillReferencedIsNotReused(t *testing.T) {
 	const n, pop, elite = 12, 20, 2
 	rnd := testutil.Rand(t, 43)

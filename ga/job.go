@@ -242,6 +242,13 @@ func (job *SimulationJob) UpdateSimulationParameters(parameters *Parameters) err
 		return fmt.Errorf("cannot update simulation parameters while simulation is running")
 	}
 
+	// The population size is fixed at start (BE-01): the population, the
+	// species slice and the arena are sized for it, so a configure keeps it
+	// whatever the request says. Copy, so the caller's parameters are untouched.
+	updated := *parameters
+	updated.PopulationSize = job.simulation.Parameters.PopulationSize
+	parameters = &updated
+
 	job.simulation.Parameters = parameters
 	job.updatedAt = time.Now()
 	// The job is paused, so no epoch will publish the new parameters until it is

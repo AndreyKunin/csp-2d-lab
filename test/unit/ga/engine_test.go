@@ -345,6 +345,57 @@ func TestManagerPauseConfigureResume(t *testing.T) {
 	_ = m.PauseSimulation(st.ID)
 }
 
+// UT-GA-MGR-16: the population size is fixed at start (BE-01). A configure
+// with another population size, larger or smaller, keeps the job's size and
+// changes the other parameters; the job keeps running.
+func TestManagerConfigureKeepsPopulationSize(t *testing.T) {
+	for _, newSize := range []int{3, 12} {
+		m := ga.NewSimulationManager()
+		fake := &fakes.Problem{InputsSize: 3, EpochDelay: time.Millisecond}
+		st, err := m.StartSimulation(ga.NewSimulation(params(6, 2, 1000000, 1000000)), fake)
+		if err != nil {
+			t.Fatal(err)
+		}
+		testutil.Within(t, 5*time.Second, "pause", func() { _ = m.PauseSimulation(st.ID) })
+		waitStatus(t, m, st.ID, ga.StatusPaused)
+		q := params(newSize, 2, 1000000, 1000000)
+		q.MutationRate = 0.33
+		if err := m.ConfigureSimulation(st.ID, q); err != nil {
+			t.Fatal(err)
+		}
+		stats, _ := m.GetSimulationStatistics(st.ID)
+		if got := stats.Statistics.Parameters.PopulationSize; got != 6 {
+			t.Errorf("configure with size %d: population size %d, want 6 (fixed at start)", newSize, got)
+		}
+		if got := stats.Statistics.Parameters.MutationRate; got != 0.33 {
+			t.Errorf("configure with size %d: mutation rate %g, want 0.33", newSize, got)
+		}
+		if q.PopulationSize != newSize {
+			t.Errorf("configure modified the caller's parameters: %d", q.PopulationSize)
+		}
+		epoch := stats.Statistics.State.CurrentEpoch.EpochNumber
+		testutil.Within(t, 5*time.Second, "resume", func() { _ = m.ResumeSimulation(st.ID) })
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			s, _ := m.GetSimulationStatistics(st.ID)
+			if s.Status == ga.StatusError {
+				t.Fatalf("configure with size %d: job failed: %v", newSize, *s.Error)
+			}
+			if s.Statistics.State.CurrentEpoch.EpochNumber > epoch+5 {
+				if got := s.Statistics.Parameters.PopulationSize; got != 6 {
+					t.Errorf("after resume: population size %d, want 6", got)
+				}
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("configure with size %d: epoch stuck at %d", newSize, s.Statistics.State.CurrentEpoch.EpochNumber)
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		_ = m.PauseSimulation(st.ID)
+	}
+}
+
 // UT-GA-MGR-04: control calls on a completed job return promptly.
 func TestManagerCompletedJobDoesNotHang(t *testing.T) {
 	m := ga.NewSimulationManager()
