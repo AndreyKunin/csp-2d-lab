@@ -4,9 +4,11 @@ import (
 	"csp2d/ga"
 	"csp2d/problem/csp2d"
 	"csp2d/util"
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
+	"strings"
 )
 
 type Rectangle struct {
@@ -50,11 +52,57 @@ type Request struct {
 // same limit (Model.validate, MIN_TOTAL_COUNT).
 const MinPartsCount = 4
 
-// ValidateWindowSize rejects a window size below 1: addEpoch would index -1
-// and the job would panic (MET-03). An omitted window size is valid.
-func (r *Request) ValidateWindowSize() error {
-	if r.Parameters != nil && r.Parameters.WindowSize != nil && *r.Parameters.WindowSize < 1 {
-		return fmt.Errorf("windowSize must be at least 1, got %d", *r.Parameters.WindowSize)
+// Validate checks a start request (BE-02) and returns every problem found:
+//   - the parameters against their rules (application.yaml, ParameterSpecs);
+//   - the total part count: from MinPartsCount to maxParts (inputs.maxPartsCount);
+//   - each part: a whole-number label, positive sizes, a count of at least 0;
+//   - the sheet, when given: positive sizes; the saw width: at least 0.
+//
+// It runs before BuildInputs, so a huge count is rejected before anything is
+// allocated.
+func (r *Request) Validate(specs ParameterSpecs, maxParts int) error {
+	var problems []string
+	if err := specs.Validate(r.Parameters); err != nil {
+		problems = append(problems, err.Error())
+	}
+	countsValid := true
+	for i, part := range r.Parts {
+		if _, err := strconv.Atoi(part.Label); err != nil {
+			problems = append(problems, fmt.Sprintf("part %d: label must be a whole number, got %q", i+1, part.Label))
+		}
+		if !(part.Width > 0) || !(part.Length > 0) {
+			problems = append(problems, fmt.Sprintf("part %d: width and length must be greater than 0, got %g x %g", i+1, part.Width, part.Length))
+		}
+		if part.Count < 0 || part.Count > maxParts {
+			problems = append(problems, fmt.Sprintf("part %d: count must be from 0 to %d, got %d", i+1, maxParts, part.Count))
+			countsValid = false
+		}
+	}
+	if countsValid { // each count is bounded, so the sum cannot overflow
+		if n := r.PartsCount(); n < MinPartsCount {
+			problems = append(problems, fmt.Sprintf("at least %d parts are required, got %d", MinPartsCount, n))
+		} else if n > maxParts {
+			problems = append(problems, fmt.Sprintf("at most %d parts are allowed, got %d", maxParts, n))
+		}
+	}
+	if r.Sheets != nil && (!(r.Sheets.Width > 0) || !(r.Sheets.Length > 0)) {
+		problems = append(problems, fmt.Sprintf("sheet width and length must be greater than 0, got %g x %g", r.Sheets.Width, r.Sheets.Length))
+	}
+	if r.SawWidth != nil && !(*r.SawWidth >= 0) {
+		problems = append(problems, fmt.Sprintf("sawWidth must be at least 0, got %g", *r.SawWidth))
+	}
+	if len(problems) > 0 {
+		return errors.New(strings.Join(problems, "; "))
+	}
+	return nil
+}
+
+// ValidateBuiltParameters checks what the per-parameter rules cannot: the
+// elite count is below the population size, which the server computes (n²
+// clamped to the population bounds) or keeps from the running job (BE-01).
+func ValidateBuiltParameters(p ga.Parameters) error {
+	if p.EliteCount >= p.PopulationSize {
+		return fmt.Errorf("eliteCount must be less than the population size %d, got %d", p.PopulationSize, p.EliteCount)
 	}
 	return nil
 }

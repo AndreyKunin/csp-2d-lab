@@ -7,6 +7,7 @@ import {
     SimulationStatus
 } from "../utils/simulation";
 import {canvasesToPngBlobs} from "../utils/layout";
+import {ServerParameterDefinitions} from "../utils/parameterDefinitions";
 
 interface StartRequest {
     sheets?: Sheet;
@@ -78,9 +79,12 @@ export class SimulationResults {
 }
 
 
-export const getDefaultParameters = async () => {
+// getParameterDefinitions returns the server's default value and validation
+// rule of every parameter (key -> {default, rule}; the rule in the DSL of
+// utils/parameterDefinitions.ts).
+export const getParameterDefinitions = async () => {
     try {
-        const response = await fetch('/api/v1/service/default-parameters', {
+        const response = await fetch('/api/v1/service/parameter-definitions', {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json',
@@ -89,9 +93,9 @@ export const getDefaultParameters = async () => {
 
         await validate(response);
 
-        const parameters: SimulationParameters = await response.json();
+        const definitions: ServerParameterDefinitions = await response.json();
 
-        return parameters;
+        return definitions;
     } catch (error) {
         console.error('API request failed:', error);
         throw error;

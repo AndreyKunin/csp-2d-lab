@@ -24,13 +24,15 @@ func registerRequestSteps(ctx *godog.ScenarioContext, w *World) {
 	ctx.Step(`^a long-running simulation for fixture "([^"]*)"$`, w.longRunningSimulation)
 }
 
-// A long-running job: the early stop is only evaluated once
-// epochNumber >= windowSize, so a large window keeps the job running until the
-// scenario pauses or deletes it. The window must stay moderate: the server
-// pre-allocates 8 bytes per window slot per job (10^6 -> 8 MB, ~11 min of epochs).
+// A long-running job: a cycle ends after windowSize epochs without
+// improvement and the run restarts, and the championship (which can end the
+// job) starts only after cycleCount cycles. A huge cycle count keeps the job
+// running until the scenario pauses or deletes it; the window stays within its
+// rule (at most 250, config/parameters.json).
 const (
 	longRunningEpochs = "100000000"
-	longRunningWindow = "1000000"
+	longRunningWindow = "250"
+	longRunningCycles = "1000000"
 )
 
 func (w *World) longRunningSimulation(id string) error {
@@ -41,6 +43,9 @@ func (w *World) longRunningSimulation(id string) error {
 		return err
 	}
 	if err := w.requestParameterIs("windowSize", longRunningWindow); err != nil {
+		return err
+	}
+	if err := w.requestParameterIs("cycleCount", longRunningCycles); err != nil {
 		return err
 	}
 	return w.startRequired()

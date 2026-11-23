@@ -4,7 +4,7 @@ import {RadioGroup} from "./RadioGroup";
 import {FixedGrid} from "./FixedGrid";
 import {Checkbox} from "./Checkbox";
 import {PropertyGrid} from "./PropertyGrid";
-import {getDefaultParameters} from "../services/requests";
+import {getParameterDefinitions} from "../services/requests";
 import {SimulationParameters} from "../utils/simulation";
 import {
     getInitialParameters,
@@ -18,7 +18,7 @@ import LoadFormButton from "./LoadFormButton";
 import SaveFormButton from "./SaveFormButton";
 import {SawWidthOption, SawWidthRadioGroup} from "./SawWidthRadioGroup";
 import {isFraction} from "../utils/numbers";
-import {overriddenParameters} from "../utils/parameterDefinitions";
+import {defaultParameterValues, overriddenParameters, setParameterRules} from "../utils/parameterDefinitions";
 
 
 const enum PartsRowType {
@@ -101,7 +101,11 @@ export const InputForm: React.FC<InputFormProps> = ({isLoading, onSubmit, onErro
     ], []);
 
     useEffect(() => {
-        getDefaultParameters().then(defaultParameters => {
+        // The rules are set before the parameters appear, so every value is
+        // validated with the server's rules.
+        getParameterDefinitions().then((definitions: any) => {
+            setParameterRules(definitions);
+            const defaultParameters = defaultParameterValues(definitions) as SimulationParameters;
             setDefaultParameters(defaultParameters);
             setSimulationParameters(getInitialParameters(defaultParameters));
         });

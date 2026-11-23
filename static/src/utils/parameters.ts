@@ -60,7 +60,7 @@ export function getSimulationParameters(items: PropertyItem[]): SimulationParame
 }
 
 // validateSimulationParameters checks one parameter value against its rule
-// (parameterDefinitions.ts) and records the result for the grid. allowEmpty
+// (the server's rules, parameterDefinitions.ts) and records the result for the grid. allowEmpty
 // accepts an empty value (while the user types); a submit passes false.
 export function validateSimulationParameters(
     allowEmpty: boolean, key: string, value: string, errorsRef: MutableRefObject<Map<string, boolean>>

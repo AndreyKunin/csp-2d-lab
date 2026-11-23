@@ -90,7 +90,7 @@ export class Simulation {
         }
     }
 
-    // validate checks every parameter against its rule (parameterDefinitions.ts),
+    // validate checks every parameter against its rule (the server's rules, parameterDefinitions.ts),
     // then the relations between parameters.
     public validate(): string[] {
         const errors: string[] = [];

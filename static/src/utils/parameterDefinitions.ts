@@ -1,6 +1,10 @@
 // Simulation parameters shown in the start form ("custom simulation parameters",
-// all of them) and in the Lab Edit dialog (those with runtime: true), with
-// their validation rules.
+// all of them) and in the Lab Edit dialog (those with runtime: true).
+//
+// The default values and the validation rules come from the server
+// (application.yaml; the server validates requests with the same rules):
+// GET /api/v1/service/parameter-definitions, loaded by InputForm. The rules are
+// set by setParameterRules, the defaults built by defaultParameterValues.
 //
 // Rule DSL: <type><open><min>-<max><close>
 //   type   int (whole number) or float
@@ -13,7 +17,6 @@
 export interface ParameterDefinition {
     key: string;          // request field; a dotted key is a nested field (populationSize.min)
     displayName: string;
-    rule: string;         // validation rule (DSL above)
     runtime: boolean;     // also editable in the Lab Edit dialog
     tooltip?: string;
 }
@@ -22,51 +25,51 @@ const populationSizeTooltip = 'Population size a number of solutions within the 
 
 export const PARAMETER_DEFINITIONS: ParameterDefinition[] = [
     {
-        key: 'populationSize.min', displayName: 'Minimum population size', rule: 'int[3-)', runtime: false,
+        key: 'populationSize.min', displayName: 'Minimum population size', runtime: false,
         tooltip: populationSizeTooltip,
     },
     {
-        key: 'populationSize.max', displayName: 'Maximum population size', rule: 'int[3-)', runtime: false,
+        key: 'populationSize.max', displayName: 'Maximum population size', runtime: false,
         tooltip: populationSizeTooltip,
     },
     {
-        key: 'eliteCount', displayName: 'Elite count', rule: 'int[1-)', runtime: true,
+        key: 'eliteCount', displayName: 'Elite count', runtime: true,
         tooltip: 'The elite size specifies the number of the fittest individuals that are guaranteed to be carried over from one generation to the next without any changes.',
     },
     {
-        key: 'mutationRate', displayName: 'Mutation rate', rule: 'float[0-1]', runtime: true,
+        key: 'mutationRate', displayName: 'Mutation rate', runtime: true,
         tooltip: 'Mutation rate is the probability that a single element of the solution will be altered during the creation of a new offspring solution.',
     },
     {
-        key: 'crossoverRate', displayName: 'Crossover rate', rule: 'float(0-1]', runtime: true,
+        key: 'crossoverRate', displayName: 'Crossover rate', runtime: true,
         tooltip: 'Share of the non-elite offspring made by crossover, greater than 0 and at most 1. The rest are copies of tournament-selected individuals, changed by mutation only.',
     },
     {
-        key: 'maxEpochsCount', displayName: 'Number of generations', rule: 'int[1-)', runtime: true,
+        key: 'maxEpochsCount', displayName: 'Number of generations', runtime: true,
         tooltip: 'Maximum nimber of epochs (generations) in the simulation. Simulation is a process that never halts until manually stopped. We can auto-stop the process when it reaches the maximum number of epochs.',
     },
     {
-        key: 'windowSize', displayName: 'Window size', rule: 'int[1-250]', runtime: false,
+        key: 'windowSize', displayName: 'Window size', runtime: false,
         tooltip: 'Number of epochs without improvement of the best solution that ends a cycle (and the championship). Also the length of the sliding window that smooths the charted metrics. From 1 to 250.',
     },
     {
-        key: 'cycleCount', displayName: 'Cycles before championship', rule: 'int[1-)', runtime: true,
+        key: 'cycleCount', displayName: 'Cycles before championship', runtime: true,
         tooltip: 'When the best solution stops improving for a window, the cycle ends: its elite is kept and the simulation starts over from random solutions. After this many cycles, all kept elites compete in a final championship; the simulation ends when it stops improving too.',
     },
     {
-        key: 'tournamentSize', displayName: 'Tournament size', rule: 'int[2-)', runtime: true,
+        key: 'tournamentSize', displayName: 'Tournament size', runtime: true,
         tooltip: 'Number of individuals drawn at random for each parent; the best of them becomes the parent. Larger values favour the best solutions more strongly. A whole number, 2 or more.',
     },
     {
-        key: 'repairWeight', displayName: 'Repair weight', rule: 'int[1-)', runtime: true,
+        key: 'repairWeight', displayName: 'Repair weight', runtime: true,
         tooltip: 'Mutation budget units that one successful eliminate-and-repair mutation costs (the worst sheet is emptied and its parts are packed again). Larger values mean fewer mutations per generation. A whole number, 1 or more.',
     },
     {
-        key: 'flipWeight', displayName: 'Flip weight', rule: 'int[1-)', runtime: true,
+        key: 'flipWeight', displayName: 'Flip weight', runtime: true,
         tooltip: 'Mutation budget units that one successful operator flip costs (a cut direction that wastes the most area is flipped). Larger values mean fewer mutations per generation. A whole number, 1 or more.',
     },
     {
-        key: 'donorFraction', displayName: 'Donor fraction', rule: 'float(0-1]', runtime: true,
+        key: 'donorFraction', displayName: 'Donor fraction', runtime: true,
         tooltip: 'Largest part of a parent that crossover copies into a child, as a share of the parts: greater than 0 and at most 1.',
     },
 ];
@@ -161,22 +164,49 @@ export function checkRuleValue(rule: ParsedRule, value: string): string | null {
     return null;
 }
 
-// Every rule is parsed once at load: a malformed rule fails at start-up, not
-// when a user types.
-const PARSED = new Map<string, { definition: ParameterDefinition, rule: ParsedRule }>(
-    PARAMETER_DEFINITIONS.map(d => [d.key, {definition: d, rule: parseRule(d.rule)}])
-);
+const DEFINITIONS = new Map<string, ParameterDefinition>(PARAMETER_DEFINITIONS.map(d => [d.key, d]));
+
+// What the server sends of each parameter (GET parameter-definitions), by key.
+export interface ServerParameterDefinition {
+    default: number;
+    rule: string;         // DSL above
+}
+export type ServerParameterDefinitions = Record<string, ServerParameterDefinition>;
+
+// The server's rules, parsed once when they are loaded (setParameterRules).
+const RULES = new Map<string, ParsedRule>();
+
+// setParameterRules parses the rules the server sent. A malformed rule or a
+// definition without a rule is a programming error: it is logged, and
+// validateParameter then reports the parameter as not validatable.
+export function setParameterRules(definitions: ServerParameterDefinitions) {
+    RULES.clear();
+    for (const [key, definition] of Object.entries(definitions)) {
+        try {
+            RULES.set(key, parseRule(definition.rule));
+        } catch (error) {
+            console.error(error);
+        }
+    }
+    for (const definition of PARAMETER_DEFINITIONS) {
+        if (!RULES.has(definition.key)) {
+            console.error(`No validation rule for parameter ${definition.key}`);
+        }
+    }
+}
 
 export function findParameter(key: string): { definition: ParameterDefinition, rule: ParsedRule } | undefined {
-    return PARSED.get(key);
+    const definition = DEFINITIONS.get(key);
+    const rule = RULES.get(key);
+    return definition && rule ? {definition, rule} : undefined;
 }
 
 // validateParameter returns null when the value of the parameter `key` is
 // valid, else an error message for the user.
 export function validateParameter(key: string, value: string): string | null {
-    const found = PARSED.get(key);
+    const found = findParameter(key);
     if (!found) {
-        return `Unknown parameter ${key}.`;
+        return DEFINITIONS.has(key) ? `No validation rule for ${key} from the server.` : `Unknown parameter ${key}.`;
     }
     const reason = checkRuleValue(found.rule, value);
     return reason ? `${found.definition.displayName} ${reason}.` : null;
@@ -193,4 +223,22 @@ export function valueOf(source: object | undefined, key: string): unknown {
         current = (current as Record<string, unknown>)[part];
     }
     return current;
+}
+
+// defaultParameterValues builds the parameter object (dotted keys become nested
+// fields: populationSize.min) from the server's defaults.
+export function defaultParameterValues(definitions: ServerParameterDefinitions): Record<string, unknown> {
+    const parameters: Record<string, unknown> = {};
+    for (const [key, definition] of Object.entries(definitions)) {
+        const path = key.split('.');
+        let target = parameters;
+        for (const part of path.slice(0, -1)) {
+            if (typeof target[part] !== 'object' || target[part] === null) {
+                target[part] = {};
+            }
+            target = target[part] as Record<string, unknown>;
+        }
+        target[path[path.length - 1]] = definition.default;
+    }
+    return parameters;
 }

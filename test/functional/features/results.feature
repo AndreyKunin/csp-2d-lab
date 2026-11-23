@@ -49,9 +49,14 @@ Feature: Simulation results
     Then the solutions only use labels from the request
     And the sheet numbers are contiguous from 0
 
+  # Within one cycle: a new cycle starts over from random solutions, and the
+  # result is the current cycle's best. A window far above the production limit
+  # of 250 (allowed by the fast profile) keeps the run in its first cycle.
   @FT-RES-09
   Scenario: The best result never gets worse
-    Given a long-running simulation for fixture "D13-mixed-20"
+    Given a running simulation for fixture "D13-mixed-20" with parameters:
+      | windowSize     | 1000000   |
+      | maxEpochsCount | 100000000 |
     And the epoch number increases within 10 seconds
     And I pause the simulation
     And I remember the best result fitness

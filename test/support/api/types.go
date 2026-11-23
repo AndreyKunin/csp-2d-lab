@@ -141,8 +141,12 @@ type Result struct {
 	Solutions []Solution `json:"solutions"`
 }
 
-// DefaultParameters is returned by GET /api/v1/service/default-parameters.
-type DefaultParameters = Parameters
+// ParameterDefinition is one entry of GET /api/v1/service/parameter-definitions
+// (key -> definition).
+type ParameterDefinition struct {
+	Default float64 `json:"default"`
+	Rule    string  `json:"rule"`
+}
 
 // ---- Helpers ----------------------------------------------------------------
 

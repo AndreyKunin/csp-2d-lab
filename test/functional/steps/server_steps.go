@@ -2,6 +2,7 @@ package steps
 
 import (
 	"csp2d/test/support/api"
+	"encoding/json"
 	"fmt"
 	"math"
 	"net/http"
@@ -21,7 +22,7 @@ func registerServerSteps(ctx *godog.ScenarioContext, w *World) {
 	ctx.Step(`^the server is healthy$`, w.serverIsHealthy)
 
 	ctx.Step(`^I send a "(GET|POST|PUT|DELETE)" request to "([^"]*)"$`, w.sendRequest)
-	ctx.Step(`^I request the default parameters$`, w.requestDefaultParameters)
+	ctx.Step(`^I request the parameter definitions$`, w.requestParameterDefinitions)
 
 	ctx.Step(`^the response status is (\d+)$`, w.responseStatusIs)
 	ctx.Step(`^the response status is successful$`, w.responseIsSuccessful)
@@ -32,7 +33,9 @@ func registerServerSteps(ctx *godog.ScenarioContext, w *World) {
 	ctx.Step(`^the response header "([^"]*)" contains "([^"]*)"$`, w.responseHeaderContains)
 	ctx.Step(`^the response body contains "([^"]*)"$`, w.responseBodyContains)
 	ctx.Step(`^the response body is "([^"]*)"$`, w.responseBodyIs)
-	ctx.Step(`^the default parameters match the server config$`, w.defaultParametersMatchConfig)
+	ctx.Step(`^the parameter rule of "([^"]*)" is "([^"]*)"$`, w.parameterRuleIs)
+	ctx.Step(`^the response has (\d+) parameter definitions$`, w.parameterDefinitionCount)
+	ctx.Step(`^the parameter definitions match the server config$`, w.parameterDefinitionsMatchConfig)
 }
 
 func (w *World) serverRunningWithConfig(profile string) error {
@@ -78,11 +81,11 @@ func (w *World) sendRequest(method, path string) error {
 	return nil
 }
 
-func (w *World) requestDefaultParameters() error {
+func (w *World) requestParameterDefinitions() error {
 	if err := w.ensureServer(); err != nil {
 		return err
 	}
-	w.record(w.client.DefaultParameters())
+	w.record(w.client.ParameterDefinitions())
 	return nil
 }
 
@@ -180,84 +183,103 @@ func (w *World) responseBodyIs(text string) error {
 	return nil
 }
 
-// configDefaults mirrors the defaults block of application.yaml.
-type configDefaults struct {
-	Defaults struct {
-		SimulationParameters struct {
-			PopulationSize struct {
-				Min int `yaml:"min"`
-				Max int `yaml:"max"`
-			} `yaml:"populationSize"`
-			EliteCount     int     `yaml:"eliteCount"`
-			MutationRate   float64 `yaml:"mutationRate"`
-			CrossoverRate  float64 `yaml:"crossoverRate"`
-			CycleCount     int     `yaml:"cycleCount"`
-			TournamentSize int     `yaml:"tournamentSize"`
-			RepairWeight   int     `yaml:"repairWeight"`
-			FlipWeight     int     `yaml:"flipWeight"`
-			DonorFraction  float64 `yaml:"donorFraction"`
-			MaxEpochsCount int     `yaml:"maxEpochsCount"`
-			WindowSize     int     `yaml:"windowSize"`
-		} `yaml:"simulationParameters"`
-	} `yaml:"defaults"`
+// parameterDefinitions decodes the last response of GET parameter-definitions
+// (key -> default and rule).
+func (w *World) parameterDefinitions() (map[string]api.ParameterDefinition, error) {
+	resp, err := w.last()
+	if err != nil {
+		return nil, err
+	}
+	var definitions map[string]api.ParameterDefinition
+	if err := json.Unmarshal(resp.Body, &definitions); err != nil {
+		return nil, fmt.Errorf("parameter definitions: %w: %s", err, resp)
+	}
+	return definitions, nil
 }
 
-func (w *World) defaultParametersMatchConfig() error {
-	resp, err := w.requireStatus(http.StatusOK)
+func (w *World) parameterRuleIs(key, rule string) error {
+	definitions, err := w.parameterDefinitions()
 	if err != nil {
 		return err
 	}
-	var got api.Parameters
-	if err := resp.Decode(&got); err != nil {
+	if got, ok := definitions[key]; !ok || got.Rule != rule {
+		return fmt.Errorf("rule of %s = %q (present %v), want %q", key, got.Rule, ok, rule)
+	}
+	return nil
+}
+
+func (w *World) parameterDefinitionCount(n int) error {
+	definitions, err := w.parameterDefinitions()
+	if err != nil {
+		return err
+	}
+	if len(definitions) != n {
+		return fmt.Errorf("%d parameter definitions, want %d: %v", len(definitions), n, definitions)
+	}
+	return nil
+}
+
+// parameterDefinitionsMatchConfig compares the definitions the server returns
+// with defaults.simulationParameters of the profile's application.yaml (each
+// parameter: default and rule; a group such as populationSize nests its
+// parameters, so populationSize.min is a dotted key).
+func (w *World) parameterDefinitionsMatchConfig() error {
+	if _, err := w.requireStatus(http.StatusOK); err != nil {
+		return err
+	}
+	got, err := w.parameterDefinitions()
+	if err != nil {
 		return err
 	}
 	data, err := os.ReadFile(filepath.Join(w.srv.WorkDir, "application.yaml"))
 	if err != nil {
 		return err
 	}
-	var cfg configDefaults
+	var cfg struct {
+		Defaults struct {
+			SimulationParameters map[string]any `yaml:"simulationParameters"`
+		} `yaml:"defaults"`
+	}
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return err
 	}
-	want := cfg.Defaults.SimulationParameters
+	want := map[string]api.ParameterDefinition{}
+	var walk func(node map[any]any, prefix string)
+	walk = func(node map[any]any, prefix string) {
+		for name, value := range node {
+			child, _ := value.(map[any]any)
+			key := prefix + fmt.Sprint(name)
+			if rule, ok := child["rule"].(string); ok {
+				def, _ := strconv.ParseFloat(fmt.Sprint(child["default"]), 64)
+				want[key] = api.ParameterDefinition{Default: def, Rule: rule}
+				continue
+			}
+			walk(child, key+".")
+		}
+	}
+	for name, value := range cfg.Defaults.SimulationParameters {
+		walk(map[any]any{name: value}, "")
+	}
+	if len(want) == 0 {
+		return fmt.Errorf("no parameters in %s", w.srv.WorkDir)
+	}
 	var diffs []string
-	check := func(name string, ok bool, got, want any) {
-		if !ok {
-			diffs = append(diffs, fmt.Sprintf("%s: got %v, want %v", name, got, want))
+	for key, d := range want {
+		g, ok := got[key]
+		switch {
+		case !ok:
+			diffs = append(diffs, key+": missing")
+		case g.Rule != d.Rule || math.Abs(g.Default-d.Default) > 1e-12:
+			diffs = append(diffs, fmt.Sprintf("%s: got %v %q, want %v %q", key, g.Default, g.Rule, d.Default, d.Rule))
 		}
 	}
-	if got.PopulationSize == nil {
-		diffs = append(diffs, "populationSize missing")
-	} else {
-		check("populationSize.min", got.PopulationSize.Min == want.PopulationSize.Min, got.PopulationSize.Min, want.PopulationSize.Min)
-		check("populationSize.max", got.PopulationSize.Max == want.PopulationSize.Max, got.PopulationSize.Max, want.PopulationSize.Max)
-	}
-	checkInt := func(name string, g *int, want int) {
-		if g == nil {
-			diffs = append(diffs, name+" missing")
-			return
+	for key := range got {
+		if _, ok := want[key]; !ok {
+			diffs = append(diffs, key+": not in the config")
 		}
-		check(name, *g == want, *g, want)
 	}
-	checkFloat := func(name string, g *float64, want float64) {
-		if g == nil {
-			diffs = append(diffs, name+" missing")
-			return
-		}
-		check(name, math.Abs(*g-want) < 1e-12, *g, want)
-	}
-	checkInt("eliteCount", got.EliteCount, want.EliteCount)
-	checkFloat("mutationRate", got.MutationRate, want.MutationRate)
-	checkFloat("crossoverRate", got.CrossoverRate, want.CrossoverRate)
-	checkInt("cycleCount", got.CycleCount, want.CycleCount)
-	checkInt("tournamentSize", got.TournamentSize, want.TournamentSize)
-	checkInt("repairWeight", got.RepairWeight, want.RepairWeight)
-	checkInt("flipWeight", got.FlipWeight, want.FlipWeight)
-	checkFloat("donorFraction", got.DonorFraction, want.DonorFraction)
-	checkInt("maxEpochsCount", got.MaxEpochsCount, want.MaxEpochsCount)
-	checkInt("windowSize", got.WindowSize, want.WindowSize)
 	if len(diffs) > 0 {
-		return fmt.Errorf("default parameters differ from config:\n  %s", strings.Join(diffs, "\n  "))
+		return fmt.Errorf("parameter definitions differ from config:\n  %s", strings.Join(diffs, "\n  "))
 	}
 	return nil
 }

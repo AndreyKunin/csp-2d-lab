@@ -122,8 +122,8 @@ func (c *Client) doJSON(method, path string, payload any) (*Response, error) {
 
 func (c *Client) Heartbeat() (*Response, error) { return c.Do(http.MethodGet, "/heartbeat", nil, "") }
 
-func (c *Client) DefaultParameters() (*Response, error) {
-	return c.Do(http.MethodGet, "/api/v1/service/default-parameters", nil, "")
+func (c *Client) ParameterDefinitions() (*Response, error) {
+	return c.Do(http.MethodGet, "/api/v1/service/parameter-definitions", nil, "")
 }
 
 // Start posts a typed request.

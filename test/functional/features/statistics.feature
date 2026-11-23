@@ -25,7 +25,8 @@ Feature: Status statistics
     Given a running simulation for fixture "D13-mixed-20" with parameters:
       | eliteCount     | 5         |
       | maxEpochsCount | 100000000 |
-      | windowSize     | 1000000   |
+      | windowSize     | 250       |
+      | cycleCount     | 1000000   |
     And the epoch number increases within 10 seconds
     When I pause the simulation
     Then the selected species are sorted and number 5
@@ -38,9 +39,14 @@ Feature: Status statistics
     When I poll the status for 2 seconds
     Then the saturation rate stays within 0 and 1
 
+  # Within one cycle: after a restart the window still holds the previous
+  # cycle's better epochs. A window far above the production limit of 250
+  # (allowed by the fast profile) keeps the run in its first cycle.
   @FT-STAT-08
   Scenario: Window averages are never below the best fitness
-    Given a long-running simulation for fixture "D13-mixed-20"
+    Given a running simulation for fixture "D13-mixed-20" with parameters:
+      | windowSize     | 1000000   |
+      | maxEpochsCount | 100000000 |
     And the epoch number increases within 10 seconds
     When I poll the status for 2 seconds
     Then the window averages are not below the best fitness

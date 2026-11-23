@@ -38,7 +38,7 @@ Feature: Search parameters
       | flipWeight     | 3    |
       | donorFraction  | 1    |
       | maxEpochsCount | 30   |
-      | windowSize     | 1000 |
+      | windowSize     | 250  |
     When I wait for job completion within 60 seconds
     Then the job status is "completed"
     And the epoch number is exactly 30
@@ -53,7 +53,8 @@ Feature: Search parameters
       | flipWeight     | 2         |
       | donorFraction  | 0.25      |
       | maxEpochsCount | 100000000 |
-      | windowSize     | 1000000   |
+      | windowSize     | 250       |
+      | cycleCount     | 1000000   |
     Then the response status is 200
     And the job status is "paused"
     And the reported parameter "tournamentSize" is 7
@@ -75,22 +76,9 @@ Feature: Search parameters
       | flipWeight     | "one"   |
       | donorFraction  | "half"  |
 
-  # Out-of-range values are replaced by the defaults in the engine (a job never
-  # hangs on a weight of 0), but the server does not reject them yet (BE-02).
-  @FT-SP-06
-  Scenario: Out-of-range search parameters do not break a job
-    Given a running simulation for fixture "D13-mixed-20" with parameters:
-      | tournamentSize | 0    |
-      | repairWeight   | 0    |
-      | flipWeight     | 0    |
-      | donorFraction  | 0    |
-      | maxEpochsCount | 30   |
-      | windowSize     | 1000 |
-    When I wait for job completion within 60 seconds
-    Then the job status is "completed"
-    And the epoch number is exactly 30
-
-  @FT-SP-07 @pending
+  # The rules are in config/parameters.json (BE-02). The engine still replaces
+  # out-of-range values by the defaults, so a job never hangs on a weight of 0.
+  @FT-SP-07
   Scenario Outline: Out-of-range search parameters are rejected
     Given a start request from fixture "D13-mixed-20"
     And the request parameter "<key>" is <value>
@@ -100,6 +88,9 @@ Feature: Search parameters
     Examples:
       | key            | value |
       | tournamentSize | 0     |
+      | tournamentSize | 1     |
       | repairWeight   | 0     |
+      | flipWeight     | 0     |
       | flipWeight     | -1    |
+      | donorFraction  | 0     |
       | donorFraction  | 1.5   |

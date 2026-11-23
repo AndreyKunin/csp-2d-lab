@@ -36,22 +36,20 @@ Feature: Cycles and championship
     And the championship has started
     And the epoch number is at most 100000
 
+  # The cycle count is at least 1 (config/parameters.json).
   @FT-CYC-04
-  Scenario: Cycle count 0 ends the job at the first stagnation
-    Given a running simulation for fixture "D13-mixed-20" with parameters:
-      | cycleCount     | 0         |
-      | windowSize     | 5         |
-      | maxEpochsCount | 100000000 |
-    When I wait for job completion within 60 seconds
-    Then the job status is "completed"
-    And the run finished 0 cycles
-    And the championship has not started
-    And the epoch number is at most 100000
+  Scenario: Cycle count 0 is rejected
+    Given a start request from fixture "D13-mixed-20"
+    And the request parameter "cycleCount" is 0
+    When I start the simulation
+    Then the response status is 400
+    And the error message contains "cycleCount must be a whole number, at least 1"
 
   @FT-CYC-05
   Scenario: A job that never stagnates runs to the epoch limit
     Given a running simulation for fixture "D13-mixed-20" with parameters:
-      | windowSize     | 1000000 |
+      | windowSize     | 250     |
+      | cycleCount     | 1000000 |
       | maxEpochsCount | 20      |
     When I wait for job completion within 60 seconds
     Then the job status is "completed"
@@ -66,7 +64,7 @@ Feature: Cycles and championship
     When I configure the simulation with:
       | cycleCount     | 2         |
       | maxEpochsCount | 100000000 |
-      | windowSize     | 1000000   |
+      | windowSize     | 250       |
     Then the response status is 200
     And the job status is "paused"
     And the reported parameter "cycleCount" is 2
@@ -78,8 +76,7 @@ Feature: Cycles and championship
     Then the response status is 400
     And the job status is "running"
 
-  # No server-side parameter validation yet (BE-02).
-  @FT-CYC-08 @pending
+  @FT-CYC-08
   Scenario: A negative cycle count is rejected
     Given a start request from fixture "D13-mixed-20"
     And the request parameter "cycleCount" is -1

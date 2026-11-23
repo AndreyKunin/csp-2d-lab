@@ -112,7 +112,8 @@ Feature: Simulation lifecycle
   Scenario: Many pause/resume cycles
     Given a running simulation for fixture "D13-mixed-20" with parameters:
       | maxEpochsCount | 3000      |
-      | windowSize     | 1000000   |
+      | windowSize     | 250       |
+      | cycleCount     | 1000000   |
     When I pause and resume the simulation 20 times
     Then every repeated call succeeded
     When I wait for job completion within 120 seconds

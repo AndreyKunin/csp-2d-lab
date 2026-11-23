@@ -74,7 +74,8 @@ Feature: Starting a simulation
     Then the response status is 400
     And the server is healthy
 
-  @FT-START-07 @pending
+  # BE-02: Request.Validate, before anything is built.
+  @FT-START-07
   Scenario Outline: Invalid inputs are rejected with 400
     Given a start request from fixture "<fixture>"
     When I start the simulation
@@ -91,15 +92,16 @@ Feature: Starting a simulation
       | X07-negative-kerf  |
       | X08-zero-sheet     |
 
-  @FT-START-08 @pending
+  @FT-START-08
   Scenario: A non-numeric label is a client error
     Given a start request from fixture "X06-non-numeric-label"
     When I start the simulation
     Then the response status is 400
 
-  # Ten million parts: must be refused quickly without harming the server.
-  # Runs on its own server because the current implementation may exhaust memory.
-  @FT-START-09 @pending
+  # Ten million parts: refused before anything is allocated (the total part
+  # count is limited by inputs.maxTotalCount in parameters.json). Runs on its
+  # own server, as it once exhausted the memory.
+  @FT-START-09
   Scenario: An oversized part count is refused
     Given a server started with config "fast"
     And a start request from fixture "X10-oversized-count"

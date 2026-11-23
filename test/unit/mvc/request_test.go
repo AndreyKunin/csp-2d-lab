@@ -239,29 +239,3 @@ func TestPartsCount(t *testing.T) {
 		t.Fatalf("MinPartsCount %d, want 4", mvc.MinPartsCount)
 	}
 }
-
-// UT-REQ-09: a window size below 1 is rejected (MET-03); an omitted or
-// positive one is accepted.
-func TestValidateWindowSize(t *testing.T) {
-	cases := []struct {
-		name    string
-		body    string
-		wantErr bool
-	}{
-		{"no parameters", `{}`, false},
-		{"window size omitted", `{"parameters":{"eliteCount":3}}`, false},
-		{"window size 1", `{"parameters":{"windowSize":1}}`, false},
-		{"window size 250", `{"parameters":{"windowSize":250}}`, false},
-		{"large window size", `{"parameters":{"windowSize":100000000}}`, false},
-		{"window size 0", `{"parameters":{"windowSize":0}}`, true},
-		{"negative window size", `{"parameters":{"windowSize":-5}}`, true},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			err := decodeRequest(t, c.body).ValidateWindowSize()
-			if (err != nil) != c.wantErr {
-				t.Fatalf("error %v, want error %v", err, c.wantErr)
-			}
-		})
-	}
-}

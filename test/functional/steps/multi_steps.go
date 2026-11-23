@@ -171,7 +171,7 @@ func (w *World) runConcurrently(table *godog.Table) error {
 				resp, err = w.client.Result(w.jobID)
 			case "configure":
 				resp, err = w.client.Configure(w.jobID, &api.Parameters{
-					MutationRate: api.Float(0.05), MaxEpochsCount: api.Int(100000000), WindowSize: api.Int(1000000)})
+					MutationRate: api.Float(0.05), MaxEpochsCount: api.Int(100000000), WindowSize: api.Int(250), CycleCount: api.Int(1000000)})
 			default:
 				err = fmt.Errorf("unknown action %q", action)
 			}
@@ -206,7 +206,7 @@ func (w *World) churn(n int, fixture string, pauseMs int) error {
 	}
 	w.loopFailures = nil
 	for i := 0; i < n; i++ {
-		job, err := w.startOne(fixture, map[string]string{"maxEpochsCount": "100000000", "windowSize": "1000000"})
+		job, err := w.startOne(fixture, map[string]string{"maxEpochsCount": "100000000", "windowSize": "250", "cycleCount": "1000000"})
 		if err != nil {
 			w.loopFailures = append(w.loopFailures, fmt.Sprintf("#%d start: %v", i, err))
 			continue
@@ -227,7 +227,7 @@ func (w *World) startManyLongRunning(n int, fixture string) error {
 	if err := w.loadFixture(fixture); err != nil {
 		return err
 	}
-	w.req.Parameters = &api.Parameters{MaxEpochsCount: api.Int(100000000), WindowSize: api.Int(1000000)}
+	w.req.Parameters = &api.Parameters{MaxEpochsCount: api.Int(100000000), WindowSize: api.Int(250), CycleCount: api.Int(1000000)}
 	w.startCodes = nil
 	for i := 0; i < n; i++ {
 		resp, err := w.client.Start(w.req)
@@ -326,7 +326,7 @@ func (w *World) memoryGrewLessThan(limitMB int) error {
 func (w *World) startStopTimes(fixture string, n int) error {
 	w.loopFailures = nil
 	for i := 0; i < n; i++ {
-		job, err := w.startOne(fixture, map[string]string{"maxEpochsCount": "100000000", "windowSize": "1000000"})
+		job, err := w.startOne(fixture, map[string]string{"maxEpochsCount": "100000000", "windowSize": "250", "cycleCount": "1000000"})
 		if err != nil {
 			return err
 		}

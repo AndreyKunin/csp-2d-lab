@@ -6,7 +6,6 @@ import (
 	"csp2d/util"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -14,10 +13,11 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-func (app *WebApp) GetDefaultSimulationParameters(c echo.Context) error {
-	parameters := app.Configuration.Defaults.SimulationParameters
-
-	return c.JSON(http.StatusOK, parameters)
+// GetParameterDefinitions returns the default value and the validation rule of
+// every parameter by key (application.yaml): the UI shows the defaults and
+// validates with the server's rules.
+func (app *WebApp) GetParameterDefinitions(c echo.Context) error {
+	return c.JSON(http.StatusOK, app.Configuration.Defaults.Parameters.Definitions())
 }
 
 func (app *WebApp) StartSimulation(c echo.Context) error {
@@ -28,24 +28,22 @@ func (app *WebApp) StartSimulation(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
-	if err := request.ValidateWindowSize(); err != nil {
+	if err := request.Validate(app.Configuration.Defaults.Parameters, app.Configuration.Inputs.MaxPartsCount); err != nil {
 		util.Warning.Println(err)
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
-	if n := request.PartsCount(); n < MinPartsCount {
-		message := fmt.Sprintf("at least %d parts are required, got %d", MinPartsCount, n)
-		util.Warning.Println(message)
-		return echo.NewHTTPError(http.StatusBadRequest, message)
-	}
-
 	inputs, err := request.BuildInputs()
-	if err != nil {
+	if err != nil { // Validate checked the labels: not expected
 		util.Warning.Println(err)
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 	constraints := request.BuildConstraints()
 	parameters := request.BuildParameters(app.Configuration.Defaults.SimulationParameters, len(inputs))
+	if err := ValidateBuiltParameters(parameters); err != nil {
+		util.Warning.Println(err)
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
 	simulation := ga.NewSimulation(&parameters)
 	problem := csp2d.NewCsp2dProblem(inputs, constraints)
 
@@ -126,11 +124,26 @@ func (app *WebApp) ConfigureSimulation(c echo.Context) error {
 		util.Warning.Println(err)
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
-	if err := request.ValidateWindowSize(); err != nil {
+	id := c.Param("id")
+	if err := app.Configuration.Defaults.Parameters.Validate(request.Parameters); err != nil {
 		util.Warning.Println(err)
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
-	id := c.Param("id")
+	// Validate before pausing, so a rejected request leaves the job as it was.
+	job, err := app.SimulationManager.GetSimulationStatistics(id)
+	if err != nil {
+		util.Warning.Println(err)
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+	parameters := request.BuildParameters(app.Configuration.Defaults.SimulationParameters, job.InputsLength)
+	if job.Statistics != nil && job.Statistics.Parameters != nil {
+		// The job keeps its population size (BE-01; UpdateSimulationParameters).
+		parameters.PopulationSize = job.Statistics.Parameters.PopulationSize
+	}
+	if err := ValidateBuiltParameters(parameters); err != nil {
+		util.Warning.Println(err)
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
 
 	isInitiallyPaused := false
 	if err := app.SimulationManager.PauseSimulation(id); err != nil {
@@ -142,13 +155,6 @@ func (app *WebApp) ConfigureSimulation(c echo.Context) error {
 		}
 	}
 
-	job, err := app.SimulationManager.GetSimulationStatus(id)
-	if err != nil {
-		util.Warning.Println(err)
-		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
-	}
-
-	parameters := request.BuildParameters(app.Configuration.Defaults.SimulationParameters, job.InputsLength)
 	err = app.SimulationManager.ConfigureSimulation(id, &parameters)
 	if err != nil {
 		util.Warning.Println(err)

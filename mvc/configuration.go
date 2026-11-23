@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"csp2d/ga"
 	"csp2d/util"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"time"
 
@@ -18,8 +20,16 @@ type Configuration struct {
 		StaticDir string `yaml:"staticDir"`
 	} `yaml:"webserver"`
 	Defaults struct {
-		SimulationParameters SimulationParameters `yaml:"simulationParameters"`
+		// Parameters: each parameter's default value and validation rule
+		// (parameters.go, BE-02).
+		Parameters ParameterSpecs `yaml:"simulationParameters"`
+		// SimulationParameters are the default values of Parameters.
+		SimulationParameters SimulationParameters `yaml:"-"`
 	} `yaml:"defaults"`
+	// Inputs: limits of a start request (Request.Validate).
+	Inputs struct {
+		MaxPartsCount int `yaml:"maxPartsCount"` // the total part count; the UI checks the same limit (Model.validate)
+	} `yaml:"inputs"`
 	// Memory: GOMEMLIMIT, GOGC and the arena budget (see memory.go).
 	Memory MemoryConfig `yaml:"memory"`
 	// Jobs: housekeeping limits; zero or missing values select the defaults
@@ -36,7 +46,6 @@ func (c *Configuration) Limits() ga.Limits {
 }
 
 func GetConfiguration(configFile string) *Configuration {
-	var instance *Configuration
 	if configFile == "" {
 		configFile = GetEnv("CONFIG_FILE", "application.yaml")
 	}
@@ -57,8 +66,11 @@ func GetConfiguration(configFile string) *Configuration {
 			util.Error.Println(err)
 		}
 	}(f)
-	decoder := yaml.NewDecoder(f)
-	err = decoder.Decode(&instance)
+	data, err := io.ReadAll(f)
+	if err != nil {
+		util.Error.Fatal(err)
+	}
+	instance, err := ParseConfiguration(data)
 	if err != nil {
 		util.Error.Fatal(err)
 	}
@@ -68,13 +80,29 @@ func GetConfiguration(configFile string) *Configuration {
 }
 
 func GetConfigurationFromBytes(data []byte) *Configuration {
-	var instance *Configuration
-	decoder := yaml.NewDecoder(bytes.NewReader(data))
-	if err := decoder.Decode(&instance); err != nil {
+	instance, err := ParseConfiguration(data)
+	if err != nil {
 		util.Error.Fatal(err)
 	}
 	util.Info.Println("Configuration read from embedded data")
 	return instance
+}
+
+// ParseConfiguration decodes application.yaml, checks the parameter specs and
+// the input limits, and fills the default parameter values.
+func ParseConfiguration(data []byte) (*Configuration, error) {
+	var instance Configuration
+	if err := yaml.NewDecoder(bytes.NewReader(data)).Decode(&instance); err != nil {
+		return nil, err
+	}
+	if len(instance.Defaults.Parameters) == 0 {
+		return nil, errors.New("defaults.simulationParameters: missing")
+	}
+	if instance.Inputs.MaxPartsCount < MinPartsCount {
+		return nil, fmt.Errorf("inputs.maxPartsCount must be at least %d, got %d", MinPartsCount, instance.Inputs.MaxPartsCount)
+	}
+	instance.Defaults.SimulationParameters = instance.Defaults.Parameters.Defaults()
+	return &instance, nil
 }
 
 func GetEnv(key, defaultValue string) string {

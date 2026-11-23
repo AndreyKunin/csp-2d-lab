@@ -23,7 +23,7 @@ func ConfigureRoutes(e *echo.Echo, webApp WebApp) {
 	apiV1 := e.Group("/api/v1")
 	apiV1.Use(AddJsonHeader(), AddNoCacheHeaders())
 	service := apiV1.Group("/service")
-	service.GET("/default-parameters", webApp.GetDefaultSimulationParameters)
+	service.GET("/parameter-definitions", webApp.GetParameterDefinitions)
 	simulation := apiV1.Group("/simulation")
 	simulation.POST("/start", webApp.StartSimulation)
 	simulation.GET("/pause/:id", webApp.PauseSimulation)

@@ -2,8 +2,8 @@ Feature: Runtime reconfiguration
   Changing simulation parameters of an existing job.
 
   Configure replaces the whole parameter set with the defaults plus the
-  values sent, so long-running scenarios always resend maxEpochsCount and
-  windowSize to keep the job running.
+  values sent, so long-running scenarios always resend maxEpochsCount,
+  windowSize and cycleCount to keep the job running.
 
   Background:
     Given the server is running with config "fast"
@@ -14,7 +14,8 @@ Feature: Runtime reconfiguration
     When I configure the simulation with:
       | mutationRate   | 0.02      |
       | maxEpochsCount | 100000000 |
-      | windowSize     | 1000000   |
+      | windowSize     | 250       |
+      | cycleCount     | 1000000   |
     Then the response status is 200
     And the response message is "Simulation configured"
     And the reported parameter "mutationRate" is 0.02
@@ -28,7 +29,8 @@ Feature: Runtime reconfiguration
     When I configure the simulation with:
       | mutationRate   | 0.04      |
       | maxEpochsCount | 100000000 |
-      | windowSize     | 1000000   |
+      | windowSize     | 250       |
+      | cycleCount     | 1000000   |
     Then the response status is 200
     And the job status is "paused"
     And the reported parameter "mutationRate" is 0.04
@@ -50,10 +52,12 @@ Feature: Runtime reconfiguration
   Scenario: Raising the epoch limit of a running job
     Given a running simulation for fixture "D13-mixed-20" with parameters:
       | maxEpochsCount | 3000      |
-      | windowSize     | 1000000   |
+      | windowSize     | 250       |
+      | cycleCount     | 1000000   |
     When I configure the simulation with:
       | maxEpochsCount | 100000000 |
-      | windowSize     | 1000000   |
+      | windowSize     | 250       |
+      | cycleCount     | 1000000   |
     Then the response status is 200
     And the epoch number exceeds 3000 within 60 seconds
 
@@ -63,11 +67,13 @@ Feature: Runtime reconfiguration
       | populationSize.min | <size>    |
       | populationSize.max | <size>    |
       | maxEpochsCount     | 100000000 |
-      | windowSize         | 1000000   |
+      | windowSize         | 250       |
+      | cycleCount         | 1000000   |
     When I configure the simulation with:
       | mutationRate   | 0.05      |
       | maxEpochsCount | 100000000 |
-      | windowSize     | 1000000   |
+      | windowSize     | 250       |
+      | cycleCount     | 1000000   |
     Then the response status is 200
     And the reported parameter "populationSize" is <size>
     And the epoch number increases within 5 seconds
@@ -85,7 +91,8 @@ Feature: Runtime reconfiguration
     When I configure the simulation with:
       | eliteCount     | 3         |
       | maxEpochsCount | 100000000 |
-      | windowSize     | 1000000   |
+      | windowSize     | 250       |
+      | cycleCount     | 1000000   |
     Then the reported parameter "eliteCount" is 3
     And the selected species count becomes 3 within 5 seconds
 
@@ -115,13 +122,17 @@ Feature: Runtime reconfiguration
     And I poll the status for 1 second
     Then the job status is not "error"
 
-  @FT-CFG-08 @pending
+  # Validated before the job is paused (BE-02): a rejected request leaves the
+  # job running with its parameters. eliteCount 1000 is above the population
+  # size (60 for D13 in the fast profile).
+  @FT-CFG-08
   Scenario Outline: Invalid parameter values are rejected and change nothing
     Given a long-running simulation for fixture "D13-mixed-20"
     When I configure the simulation with:
       | <key>          | <value>   |
       | maxEpochsCount | 100000000 |
-      | windowSize     | 1000000   |
+      | windowSize     | 250       |
+      | cycleCount     | 1000000   |
     Then the response status is 400
     And the job status is "running"
     And the reported parameter "eliteCount" is 5
@@ -130,8 +141,8 @@ Feature: Runtime reconfiguration
       | key          | value |
       | eliteCount   | 0     |
       | eliteCount   | 1000  |
-      | mutationRate | 0     |
-      | mutationRate | 1     |
+      | mutationRate | -0.1  |
+      | mutationRate | 1.5   |
 
   @FT-CFG-08
   Scenario: A window size of 0 is rejected
