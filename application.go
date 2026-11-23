@@ -6,7 +6,6 @@ import (
 	"context"
 	"csp2d/mvc"
 	"csp2d/util"
-	_ "net/http/pprof" // registers /debug/pprof/* on DefaultServeMux
 )
 
 func main() {

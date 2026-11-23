@@ -1,8 +1,10 @@
 package mvc
 
 import (
+	"csp2d/util"
 	"fmt"
 	"net/http"
+	"net/http/pprof"
 
 	"github.com/labstack/echo/v4"
 )
@@ -36,6 +38,26 @@ func ConfigureRoutes(e *echo.Echo, webApp WebApp) {
 	pdfGroup := e.Group("/api/v1/pdf")
 	pdfGroup.Use(AddNoCacheHeaders())
 	pdfGroup.POST("/generate", webApp.GeneratePdf)
+
+	if webApp.Configuration.Server.Pprof {
+		mountPprof(e)
+	}
+}
+
+// mountPprof serves the net/http/pprof handlers at /debug/pprof/ (BE-06):
+// the index, the named profiles (/debug/pprof/heap, goroutine, allocs, ...;
+// pprof.Index serves them by the last path element), and the CPU profile,
+// trace, command line and symbol lookup.
+func mountPprof(e *echo.Echo) {
+	g := e.Group("/debug/pprof")
+	g.GET("/", echo.WrapHandler(http.HandlerFunc(pprof.Index)))
+	g.GET("/cmdline", echo.WrapHandler(http.HandlerFunc(pprof.Cmdline)))
+	g.GET("/profile", echo.WrapHandler(http.HandlerFunc(pprof.Profile)))
+	g.GET("/symbol", echo.WrapHandler(http.HandlerFunc(pprof.Symbol)))
+	g.POST("/symbol", echo.WrapHandler(http.HandlerFunc(pprof.Symbol)))
+	g.GET("/trace", echo.WrapHandler(http.HandlerFunc(pprof.Trace)))
+	g.GET("/:name", echo.WrapHandler(http.HandlerFunc(pprof.Index)))
+	util.Info.Println("pprof is served at /debug/pprof/")
 }
 
 func AddNoCacheHeaders() echo.MiddlewareFunc {

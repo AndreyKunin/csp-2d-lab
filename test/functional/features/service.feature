@@ -33,6 +33,13 @@ Feature: Service endpoints
     Then the response header "Cache-Control" is "no-cache, no-store, must-revalidate"
     And the response header "Content-Type" contains "application/json"
 
+  # webserver.pprof is off unless a profile enables it (BE-06; UT-WEB-01 checks
+  # the handlers with the flag on).
+  @FT-SVC-08
+  Scenario: The profiler is not served by default
+    When I send a "GET" request to "/debug/pprof/"
+    Then the response status is 404
+
   @FT-SVC-04
   Scenario: The frontend is served at the root
     When I send a "GET" request to "/"

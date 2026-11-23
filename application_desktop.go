@@ -8,7 +8,6 @@ import (
 	"csp2d/util"
 	"fmt"
 	"net"
-	_ "net/http/pprof"
 	"os"
 	"runtime"
 	"time"

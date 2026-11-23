@@ -4,6 +4,9 @@ webserver:
   host: 127.0.0.1
   port: 8080
   staticDir: static
+  # Serve the Go profiler (net/http/pprof) at /debug/pprof/. Diagnostics only: it
+  # exposes the process' internals, so keep it off in production.
+  pprof: false
 
 defaults:
   # Each simulation parameter: its default value and its validation rule (a request

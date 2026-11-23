@@ -18,6 +18,9 @@ type Configuration struct {
 		Host      string `yaml:"host"`
 		Port      string `yaml:"port"`
 		StaticDir string `yaml:"staticDir"`
+		// Pprof serves the net/http/pprof handlers at /debug/pprof/ (diagnostics
+		// only; off by default, BE-06).
+		Pprof bool `yaml:"pprof"`
 	} `yaml:"webserver"`
 	Defaults struct {
 		// Parameters: each parameter's default value and validation rule
