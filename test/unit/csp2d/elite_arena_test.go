@@ -100,3 +100,36 @@ func TestEliteBufferStillReferencedIsNotReused(t *testing.T) {
 		}
 	}
 }
+
+// UT-ARN-22: the elite count can change between epochs (a reconfigure, BE-03):
+// the elite buffers grow to the larger count, never overflow, and every
+// individual's genes stay intact, up and down.
+func TestEliteCountChangesBetweenEpochs(t *testing.T) {
+	const n, pop = 20, 30
+	rnd := testutil.Rand(t, 44)
+	p := newProblem(t, distinctParts(n, rnd), sheet100, 0, pop, 2)
+	d := &epochDriver{p: p, popSize: pop, eliteCount: 2, rate: 0.07, rnd: rnd}
+	if err := d.init(); err != nil {
+		t.Fatal(err)
+	}
+	for _, elite := range []int{2, 9, 9, 1, 5} {
+		d.eliteCount = elite
+		for e := 0; e < 3; e++ {
+			if err := d.epoch(); err != nil {
+				t.Fatalf("elite %d, epoch %d: %v", elite, e, err)
+			}
+			ea := p.ArenaForTest().EliteArenaForTest()
+			if ea.OverflowCount() != 0 {
+				t.Fatalf("elite %d, epoch %d: elite arena overflowed %d times", elite, e, ea.OverflowCount())
+			}
+			if want := elite * 2 * (2*n - 1); ea.Capacity() < want {
+				t.Fatalf("elite %d: elite arena %d ints, want at least %d", elite, ea.Capacity(), want)
+			}
+			for i, ind := range *p.GetPopulation().Species {
+				if err := validatePostfix(csp2d.AsIndividualForTest(ind).PostfixForTest(), n); err != nil {
+					t.Fatalf("elite %d, epoch %d, individual %d: %v", elite, e, i, err)
+				}
+			}
+		}
+	}
+}

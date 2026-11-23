@@ -85,7 +85,7 @@ Feature: Runtime reconfiguration
       | 30   |
       | 100  |
 
-  @FT-CFG-06 @pending
+  @FT-CFG-06
   Scenario: Changing the elite count changes the elite set
     Given a long-running simulation for fixture "D13-mixed-20"
     When I configure the simulation with:

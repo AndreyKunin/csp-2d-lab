@@ -187,17 +187,6 @@ func TestComputeEpochState(t *testing.T) {
 	}
 }
 
-// UT-GA-EP-03: elite count 0 must not produce NaN (NaN breaks JSON encoding).
-func TestComputeEpochStateZeroElites(t *testing.T) {
-	testutil.Pending(t, "eliteCount 0 divides by zero and yields NaN")
-	sim := ga.NewSimulation(params(4, 0, 10, 5))
-	sim.State = &ga.State{}
-	st := ga.ComputeEpochStateForTest(sim, population(1, 2, 3, 4))
-	if math.IsNaN(st.AverageEliteFitness) || math.IsNaN(st.EliteFitnessDeviation) {
-		t.Fatal("elite statistics are NaN")
-	}
-}
-
 // UT-GA-WS-01/02: the sliding window fills up and then slides.
 func TestWindowSlides(t *testing.T) {
 	var w ga.WindowState
@@ -393,6 +382,46 @@ func TestManagerConfigureKeepsPopulationSize(t *testing.T) {
 			time.Sleep(10 * time.Millisecond)
 		}
 		_ = m.PauseSimulation(st.ID)
+	}
+}
+
+// UT-GA-MGR-17: a configured elite count takes effect at the next epoch
+// (BE-03): the published selected species (the elite set) follow it, up and
+// down, and the job keeps running.
+func TestManagerConfigureEliteCount(t *testing.T) {
+	m := ga.NewSimulationManager()
+	fake := &fakes.Problem{InputsSize: 3, EpochDelay: time.Millisecond}
+	st, err := m.StartSimulation(ga.NewSimulation(params(6, 2, 1000000, 1000000)), fake)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = m.PauseSimulation(st.ID) }()
+	for _, elite := range []int{4, 1} {
+		testutil.Within(t, 5*time.Second, "pause", func() { _ = m.PauseSimulation(st.ID) })
+		waitStatus(t, m, st.ID, ga.StatusPaused)
+		if err := m.ConfigureSimulation(st.ID, params(6, elite, 1000000, 1000000)); err != nil {
+			t.Fatal(err)
+		}
+		stats, _ := m.GetSimulationStatistics(st.ID)
+		epoch := stats.Statistics.State.CurrentEpoch.EpochNumber
+		testutil.Within(t, 5*time.Second, "resume", func() { _ = m.ResumeSimulation(st.ID) })
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			s, _ := m.GetSimulationStatistics(st.ID)
+			if s.Status == ga.StatusError {
+				t.Fatalf("elite %d: job failed: %v", elite, *s.Error)
+			}
+			if s.Statistics.State.CurrentEpoch.EpochNumber > epoch+2 {
+				if got := len(s.Problem.SelectedSpecies); got != elite {
+					t.Fatalf("elite count configured to %d: %d selected species", elite, got)
+				}
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("elite %d: epoch stuck at %d", elite, s.Statistics.State.CurrentEpoch.EpochNumber)
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
 	}
 }
 

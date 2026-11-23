@@ -39,8 +39,7 @@ func Simulate(job *SimulationJob) error {
 
 	job.publish(simulation, nil)
 
-	var eliteCount = simulation.Parameters.EliteCount
-	err := job.problem.NewPopulation(simulation.Parameters.PopulationSize, eliteCount, rnd)
+	err := job.problem.NewPopulation(simulation.Parameters.PopulationSize, effectiveEliteCount(simulation.Parameters), rnd)
 	if err != nil {
 		return err
 	}
@@ -89,6 +88,9 @@ func Simulate(job *SimulationJob) error {
 
 		var species = *population.Species
 		var size = simulation.Parameters.PopulationSize
+		// Re-read every epoch, so a configured elite count takes effect at the
+		// next epoch (BE-03), as the metrics (computeEpochState) already did.
+		eliteCount := effectiveEliteCount(simulation.Parameters)
 
 		// Cycles and championship: a cycle ends when the best fitness has not
 		// improved for WindowSize epochs. Its elites are saved and the whole
@@ -244,6 +246,13 @@ func tournamentSelect(populationSize int, k int, rnd *rand.Rand) int {
 	return bestIdx
 }
 
+// effectiveEliteCount is the elite count the engine uses: the configured one,
+// bounded to [1, PopulationSize-1] (the API rejects values outside it; the
+// bound keeps the engine from dividing by 0 or indexing past the population).
+func effectiveEliteCount(p *Parameters) int {
+	return max(1, min(p.EliteCount, p.PopulationSize-1))
+}
+
 func terminationCondition(simulation *Simulation) bool {
 	return simulation.State.CurrentEpoch.EpochNumber >= simulation.Parameters.MaxEpochsCount
 }
@@ -260,7 +269,7 @@ func computeState(simulation *Simulation, population *problem.Population) {
 func computeEpochState(simulation *Simulation, population *problem.Population) *EpochState {
 	var species = *population.Species
 	var size = simulation.Parameters.PopulationSize
-	var eliteCount = simulation.Parameters.EliteCount
+	var eliteCount = effectiveEliteCount(simulation.Parameters)
 	var avgFitness = 0.0
 	var avgEliteFitness = 0.0
 	var fitnessVariance = 0.0
