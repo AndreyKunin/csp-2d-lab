@@ -120,48 +120,62 @@ func (c *Client) doJSON(method, path string, payload any) (*Response, error) {
 
 // ---- Endpoints --------------------------------------------------------------
 
-func (c *Client) Heartbeat() (*Response, error) { return c.Do(http.MethodGet, "/heartbeat", nil, "") }
+// Paths of the API (mvc.ConfigureRoutes).
+const (
+	HealthPath               = "/api/service/v1/healthz"
+	ParameterDefinitionsPath = "/api/service/v1/parameter-definitions"
+	SimulationPath           = "/api/v1/simulation" // PUT starts; /<id>: GET, POST (action), DELETE
+	ReportPath               = "/api/v1/report"
+)
+
+func (c *Client) Health() (*Response, error) { return c.Do(http.MethodGet, HealthPath, nil, "") }
 
 func (c *Client) ParameterDefinitions() (*Response, error) {
-	return c.Do(http.MethodGet, "/api/v1/service/parameter-definitions", nil, "")
+	return c.Do(http.MethodGet, ParameterDefinitionsPath, nil, "")
 }
 
-// Start posts a typed request.
+// Start puts a typed request.
 func (c *Client) Start(req *api.StartRequest) (*Response, error) {
-	return c.doJSON(http.MethodPost, "/api/v1/simulation/start", req)
+	return c.doJSON(http.MethodPut, SimulationPath, req)
 }
 
-// StartRaw posts an arbitrary body (used for malformed-JSON scenarios).
+// StartRaw puts an arbitrary body (used for malformed-JSON scenarios).
 func (c *Client) StartRaw(body []byte) (*Response, error) {
-	return c.Do(http.MethodPost, "/api/v1/simulation/start", body, "application/json")
+	return c.Do(http.MethodPut, SimulationPath, body, "application/json")
+}
+
+// Action posts an action ("pause", "continue", "configure") on a simulation.
+func (c *Client) Action(id string, req *api.ActionRequest) (*Response, error) {
+	return c.doJSON(http.MethodPost, SimulationPath+"/"+id, req)
+}
+
+// ActionRaw posts an arbitrary body to a simulation (malformed-JSON scenarios).
+func (c *Client) ActionRaw(id string, body []byte) (*Response, error) {
+	return c.Do(http.MethodPost, SimulationPath+"/"+id, body, "application/json")
 }
 
 func (c *Client) Pause(id string) (*Response, error) {
-	return c.Do(http.MethodGet, "/api/v1/simulation/pause/"+id, nil, "")
+	return c.Action(id, &api.ActionRequest{Action: api.ActionPause})
 }
 
 func (c *Client) Resume(id string) (*Response, error) {
-	return c.Do(http.MethodGet, "/api/v1/simulation/continue/"+id, nil, "")
+	return c.Action(id, &api.ActionRequest{Action: api.ActionContinue})
 }
 
 func (c *Client) Configure(id string, params *api.Parameters) (*Response, error) {
-	return c.doJSON(http.MethodPost, "/api/v1/simulation/configure/"+id, &api.ConfigureRequest{Parameters: params})
-}
-
-func (c *Client) ConfigureRaw(id string, body []byte) (*Response, error) {
-	return c.Do(http.MethodPost, "/api/v1/simulation/configure/"+id, body, "application/json")
+	return c.Action(id, &api.ActionRequest{Action: api.ActionConfigure, Parameters: params})
 }
 
 func (c *Client) Status(id string) (*Response, error) {
-	return c.Do(http.MethodGet, "/api/v1/simulation/status/"+id, nil, "")
+	return c.Do(http.MethodGet, SimulationPath+"/"+id+"?format=status", nil, "")
 }
 
 func (c *Client) Result(id string) (*Response, error) {
-	return c.Do(http.MethodGet, "/api/v1/simulation/result/"+id, nil, "")
+	return c.Do(http.MethodGet, SimulationPath+"/"+id+"?format=result", nil, "")
 }
 
 func (c *Client) Delete(id string) (*Response, error) {
-	return c.Do(http.MethodDelete, "/api/v1/simulation/"+id, nil, "")
+	return c.Do(http.MethodDelete, SimulationPath+"/"+id, nil, "")
 }
 
 // PdfImage is one image part of a PDF request.
@@ -196,7 +210,7 @@ func (c *Client) GeneratePdf(requestJSON []byte, images []PdfImage) (*Response, 
 	if err := w.Close(); err != nil {
 		return nil, err
 	}
-	return c.Do(http.MethodPost, "/api/v1/pdf/generate", buf.Bytes(), w.FormDataContentType())
+	return c.Do(http.MethodPost, ReportPath, buf.Bytes(), w.FormDataContentType())
 }
 
 // ---- Typed convenience wrappers ------------------------------------------------

@@ -2,6 +2,7 @@ package steps
 
 import (
 	"csp2d/test/support/api"
+	"csp2d/test/support/httpclient"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -18,7 +19,8 @@ func registerLifecycleSteps(ctx *godog.ScenarioContext, w *World) {
 	ctx.Step(`^I fetch the status$`, w.fetchStatusStep)
 	ctx.Step(`^I call "(pause|resume|status|result|delete|configure)" for an unknown simulation$`, w.callUnknown)
 	ctx.Step(`^I configure the simulation with:$`, w.configureWithTable)
-	ctx.Step(`^I configure the simulation with raw body '([^']*)'$`, w.configureWithRawBody)
+	ctx.Step(`^I send the raw action body '([^']*)'$`, w.sendRawActionBody)
+	ctx.Step(`^I fetch the simulation with format "([^"]*)"$`, w.fetchWithFormat)
 	ctx.Step(`^I wait for job completion within (\d+) seconds$`, w.waitForCompletion)
 
 	ctx.Step(`^the job status is "([^"]*)"$`, w.jobStatusIs)
@@ -87,11 +89,27 @@ func (w *World) configureWithTable(table *godog.Table) error {
 	return nil
 }
 
-func (w *World) configureWithRawBody(body string) error {
+// fetchWithFormat gets the simulation (GET /api/v1/simulation/<id>) with the
+// format query parameter; an empty format sends none.
+func (w *World) fetchWithFormat(format string) error {
 	if err := w.requireJob(); err != nil {
 		return err
 	}
-	w.record(w.client.ConfigureRaw(w.jobID, []byte(body)))
+	path := httpclient.SimulationPath + "/" + w.jobID
+	if format != "" {
+		path += "?format=" + format
+	}
+	w.record(w.client.Do(http.MethodGet, path, nil, ""))
+	return nil
+}
+
+// sendRawActionBody posts body verbatim to the simulation (POST
+// /api/v1/simulation/<id>), for malformed or ill-typed actions.
+func (w *World) sendRawActionBody(body string) error {
+	if err := w.requireJob(); err != nil {
+		return err
+	}
+	w.record(w.client.ActionRaw(w.jobID, []byte(body)))
 	return nil
 }
 

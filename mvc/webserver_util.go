@@ -20,33 +20,39 @@ func PrintBanner() {
 	fmt.Println(customBanner)
 }
 
+// ConfigureRoutes registers the API. Every route is under /api and versioned:
+//
+//	GET    /api/service/v1/healthz                  the server is up
+//	GET    /api/service/v1/parameter-definitions    defaults and rules
+//	PUT    /api/v1/simulation                       start a simulation (201)
+//	POST   /api/v1/simulation/:id                   {"action": "pause"|"continue"|"configure", "parameters": {...}}
+//	GET    /api/v1/simulation/:id?format=status|result
+//	DELETE /api/v1/simulation/:id                   stop and remove
+//	POST   /api/v1/report                           the PDF report
 func ConfigureRoutes(e *echo.Echo, webApp WebApp) {
-	e.GET("/heartbeat", func(c echo.Context) error { return c.JSON(http.StatusOK, struct{}{}) })
+	service := e.Group("/api/service", AddJsonHeader(), AddNoCacheHeaders())
+	serviceV1 := service.Group("/v1")
+	serviceV1.GET("/healthz", webApp.Health)
+	serviceV1.GET("/parameter-definitions", webApp.GetParameterDefinitions)
 
 	apiV1 := e.Group("/api/v1")
-	apiV1.Use(AddJsonHeader(), AddNoCacheHeaders())
-	service := apiV1.Group("/service")
-	service.GET("/parameter-definitions", webApp.GetParameterDefinitions)
-	simulation := apiV1.Group("/simulation")
-	simulation.POST("/start", webApp.StartSimulation)
-	simulation.GET("/pause/:id", webApp.PauseSimulation)
-	simulation.GET("/continue/:id", webApp.ContinueSimulation)
-	simulation.POST("/configure/:id", webApp.ConfigureSimulation)
-	simulation.GET("/status/:id", webApp.GetSimulationStatus)
-	simulation.GET("/result/:id", webApp.GetSimulationResult)
+	// The report is a PDF: no JSON content type.
+	apiV1.POST("/report", webApp.GenerateReport, AddNoCacheHeaders())
+	simulation := apiV1.Group("/simulation", AddJsonHeader(), AddNoCacheHeaders())
+	simulation.PUT("", webApp.StartSimulation)
+	simulation.POST("/:id", webApp.SimulationAction)
+	simulation.GET("/:id", webApp.GetSimulation)
 	simulation.DELETE("/:id", webApp.DeleteSimulation)
-
-	pdfGroup := e.Group("/api/v1/pdf")
-	pdfGroup.Use(AddNoCacheHeaders())
-	pdfGroup.POST("/generate", webApp.GeneratePdf)
 
 	// A group with middleware registers catch-all "route not found" routes
 	// (<prefix> and <prefix>/*) that answer 404, also for a path that exists
-	// with another method. Replace them, so a wrong method answers 405 (BE-09).
-	for _, g := range []*echo.Group{apiV1, service, simulation, pdfGroup} {
+	// with another method. Replace them, and catch the rest of /api, so a wrong
+	// method answers 405 and an unknown path 404 (BE-09).
+	for _, g := range []*echo.Group{service, serviceV1, apiV1, simulation} {
 		g.RouteNotFound("", apiFallback(e))
 		g.RouteNotFound("/*", apiFallback(e))
 	}
+	e.RouteNotFound("/api/*", apiFallback(e))
 
 	if webApp.Configuration.Server.Pprof {
 		mountPprof(e)

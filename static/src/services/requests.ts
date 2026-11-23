@@ -16,9 +16,26 @@ interface StartRequest {
     parameters?: SimulationParameters;
 }
 
-interface ConfigureRequest {
-    parameters: SimulationParameters;
+// The API (mvc.ConfigureRoutes): PUT starts a simulation; /<id> takes GET
+// (?format=status|result), POST (an action) and DELETE.
+const SIMULATION_PATH = '/api/v1/simulation';
+
+// The body of POST /api/v1/simulation/<id>; parameters for "configure" only.
+interface ActionRequest {
+    action: 'pause' | 'continue' | 'configure';
+    parameters?: SimulationParameters;
 }
+
+const postAction = async (id: string, request: ActionRequest) => {
+    const response = await fetch(`${SIMULATION_PATH}/${id}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(request),
+    });
+    return validateAndParse(response);
+};
 
 interface Part {
     label: string;
@@ -84,7 +101,7 @@ export class SimulationResults {
 // utils/parameterDefinitions.ts).
 export const getParameterDefinitions = async () => {
     try {
-        const response = await fetch('/api/v1/service/parameter-definitions', {
+        const response = await fetch('/api/service/v1/parameter-definitions', {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json',
@@ -104,20 +121,7 @@ export const getParameterDefinitions = async () => {
 
 export const configureSimulation = async (id: string, parameters: SimulationParameters) => {
     try {
-        const request: ConfigureRequest = {
-            parameters: parameters
-        }
-
-        const response = await fetch(`/api/v1/simulation/configure/${id}`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(request),
-        });
-
-        return validateAndParse(response);
-
+        return await postAction(id, {action: 'configure', parameters});
     } catch (error) {
         console.error('Configure request failed:', error);
         throw error;
@@ -149,8 +153,8 @@ export const startSimulation = async (model: Model, parameters?: SimulationParam
         request.sawWidth = model.getNumber(model.sawWidth, true) as number;
         request.parameters = parameters;
 
-        const response = await fetch('/api/v1/simulation/start', {
-            method: 'POST',
+        const response = await fetch(SIMULATION_PATH, {
+            method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
             },
@@ -166,13 +170,7 @@ export const startSimulation = async (model: Model, parameters?: SimulationParam
 
 export const pauseSimulation = async (id: string) => {
     try {
-        const response = await fetch(`/api/v1/simulation/pause/${id}`, {
-            method: 'GET',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-        });
-        return validateAndParse(response);
+        return await postAction(id, {action: 'pause'});
     } catch (error) {
         console.error('Pause request failed:', error);
         throw error;
@@ -181,15 +179,9 @@ export const pauseSimulation = async (id: string) => {
 
 export const continueSimulation = async (id: string) => {
     try {
-        const response = await fetch(`/api/v1/simulation/continue/${id}`, {
-            method: 'GET',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-        });
-        return validateAndParse(response);
+        return await postAction(id, {action: 'continue'});
     } catch (error) {
-        console.error('Pause request failed:', error);
+        console.error('Continue request failed:', error);
         throw error;
     }
 };
@@ -197,7 +189,7 @@ export const continueSimulation = async (id: string) => {
 export const deleteSimulation = async (id: string) => {
     try {
         console.log("Deleting simulation with id: " + id);
-        const response = await fetch(`/api/v1/simulation/${id}`, {
+        const response = await fetch(`${SIMULATION_PATH}/${id}`, {
             method: 'DELETE',
             headers: {
                 'Content-Type': 'application/json',
@@ -213,7 +205,7 @@ export const deleteSimulation = async (id: string) => {
 
 export const fetchSimulationStatus = async (id: string) => {
     try {
-        const response = await fetch(`/api/v1/simulation/status/${id}`, {
+        const response = await fetch(`${SIMULATION_PATH}/${id}?format=status`, {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json',
@@ -234,7 +226,7 @@ export const fetchSimulationStatus = async (id: string) => {
 
 export const fetchSimulationResults = async (id: string) => {
     try {
-        const response = await fetch(`/api/v1/simulation/result/${id}`, {
+        const response = await fetch(`${SIMULATION_PATH}/${id}?format=result`, {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json',
@@ -282,7 +274,7 @@ export const generatePdf = async (model: Model, canvases: HTMLCanvasElement[]): 
         formData.append('images', new File([blob], filename, { type: 'image/png' }), filename);
     });
 
-    const response = await fetch('/api/v1/pdf/generate', {
+    const response = await fetch('/api/v1/report', {
         method: 'POST',
         body: formData,
         // Do NOT set Content-Type manually; the browser sets the multipart boundary.

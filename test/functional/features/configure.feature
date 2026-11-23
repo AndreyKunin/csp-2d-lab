@@ -160,12 +160,12 @@ Feature: Runtime reconfiguration
     When I configure the simulation with:
       | mutationRate | 0.05 |
     Then the response arrives within 2 seconds
-    And the response status is not successful
+    And the response status is 409
     And the server is healthy
 
   @FT-CFG-10
   Scenario: Malformed configuration JSON leaves the job running
     Given a long-running simulation for fixture "D13-mixed-20"
-    When I configure the simulation with raw body '{"parameters": {"mutationRate": '
+    When I send the raw action body '{"action": "configure", "parameters": {"mutationRate": '
     Then the response status is 400
     And the job status is "running"

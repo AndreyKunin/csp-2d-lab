@@ -38,7 +38,7 @@ type Parameters struct {
 	WindowSize     *int            `json:"windowSize,omitempty"`
 }
 
-// StartRequest is the body of POST /api/v1/simulation/start (and of the
+// StartRequest is the body of PUT /api/v1/simulation (and of the
 // "request" field of the PDF endpoint).
 type StartRequest struct {
 	Sheets     *Rectangle  `json:"sheets,omitempty"`
@@ -47,9 +47,18 @@ type StartRequest struct {
 	Parameters *Parameters `json:"parameters,omitempty"`
 }
 
-type ConfigureRequest struct {
-	Parameters *Parameters `json:"parameters"`
+// ActionRequest is the body of POST /api/v1/simulation/<id>.
+type ActionRequest struct {
+	Action     string      `json:"action"`
+	Parameters *Parameters `json:"parameters,omitempty"`
 }
+
+// Actions of POST /api/v1/simulation/<id>.
+const (
+	ActionPause     = "pause"
+	ActionContinue  = "continue"
+	ActionConfigure = "configure"
+)
 
 // ---- Responses --------------------------------------------------------------
 
@@ -141,7 +150,7 @@ type Result struct {
 	Solutions []Solution `json:"solutions"`
 }
 
-// ParameterDefinition is one entry of GET /api/v1/service/parameter-definitions
+// ParameterDefinition is one entry of GET /api/service/v1/parameter-definitions
 // (key -> definition).
 type ParameterDefinition struct {
 	Default float64 `json:"default"`

@@ -22,7 +22,7 @@ func findFreePort(startPort int) (int, net.Listener, error) {
 
 func waitForServer(port int, timeout time.Duration) bool {
 	deadline := time.Now().Add(timeout)
-	url := fmt.Sprintf("http://localhost:%d/heartbeat", port)
+	url := fmt.Sprintf("http://localhost:%d/api/service/v1/healthz", port)
 	for time.Now().Before(deadline) {
 		resp, err := http.Get(url)
 		if err == nil {

@@ -18,6 +18,32 @@ import (
 // jobs already exist.
 var ErrTooManyJobs = errors.New("too many active simulations")
 
+// ErrSimulationNotFound is wrapped by the errors for an unknown (or deleted)
+// simulation; ErrInvalidState by the errors for a call the simulation's status
+// does not allow (pause a paused job, resume a running one, any control call on
+// a finished one). The HTTP layer maps them to 404 and 409.
+var (
+	ErrSimulationNotFound = errors.New("simulation not found")
+	ErrInvalidState       = errors.New("invalid simulation state")
+)
+
+// simulationError keeps the message and wraps a kind (errors.Is).
+type simulationError struct {
+	kind    error
+	message string
+}
+
+func (e *simulationError) Error() string { return e.message }
+func (e *simulationError) Unwrap() error { return e.kind }
+
+func notFound(id string) error {
+	return &simulationError{ErrSimulationNotFound, fmt.Sprintf("simulation %s not found", id)}
+}
+
+func invalidState(format string, args ...any) error {
+	return &simulationError{ErrInvalidState, fmt.Sprintf(format, args...)}
+}
+
 // Limits configures job housekeeping. Zero values select the defaults.
 type Limits struct {
 	// MaxActiveJobs caps the registered jobs whose goroutine has not finished
@@ -186,7 +212,7 @@ func (sm *SimulationManagerImpl) control(id string, required SimulationStatus,
 	channels func(job *SimulationJob) (signal chan struct{}, ack chan struct{})) error {
 	job, exists := sm.lookup(id)
 	if !exists {
-		return fmt.Errorf("simulation %s not found", id)
+		return notFound(id)
 	}
 
 	job.controlMu.Lock()
@@ -195,11 +221,11 @@ func (sm *SimulationManagerImpl) control(id string, required SimulationStatus,
 	if status := job.GetStatus().Status; status != required {
 		switch status {
 		case StatusPaused:
-			return fmt.Errorf("simulation %s is already paused", id)
+			return invalidState("simulation %s is already paused", id)
 		case StatusRunning:
-			return fmt.Errorf("simulation %s is already running", id)
+			return invalidState("simulation %s is already running", id)
 		default:
-			return fmt.Errorf("simulation %s is %s", id, status)
+			return invalidState("simulation %s is %s", id, status)
 		}
 	}
 
@@ -207,24 +233,24 @@ func (sm *SimulationManagerImpl) control(id string, required SimulationStatus,
 	select {
 	case signal <- struct{}{}:
 	case <-job.finished:
-		return fmt.Errorf("simulation %s is %s", id, job.GetStatus().Status)
+		return invalidState("simulation %s is %s", id, job.GetStatus().Status)
 	case <-job.done:
-		return fmt.Errorf("simulation %s was deleted", id)
+		return &simulationError{ErrSimulationNotFound, fmt.Sprintf("simulation %s was deleted", id)}
 	}
 	select {
 	case <-ack:
 		return nil
 	case <-job.finished:
-		return fmt.Errorf("simulation %s is %s", id, job.GetStatus().Status)
+		return invalidState("simulation %s is %s", id, job.GetStatus().Status)
 	case <-job.done:
-		return fmt.Errorf("simulation %s was deleted", id)
+		return &simulationError{ErrSimulationNotFound, fmt.Sprintf("simulation %s was deleted", id)}
 	}
 }
 
 func (sm *SimulationManagerImpl) GetSimulationStatus(id string) (SimulationJobStatus, error) {
 	job, exists := sm.lookup(id)
 	if !exists {
-		return SimulationJobStatus{}, fmt.Errorf("simulation %s not found", id)
+		return SimulationJobStatus{}, notFound(id)
 	}
 
 	return job.GetStatus(), nil
@@ -233,7 +259,7 @@ func (sm *SimulationManagerImpl) GetSimulationStatus(id string) (SimulationJobSt
 func (sm *SimulationManagerImpl) GetSimulationStatistics(id string) (SimulationJobStatus, error) {
 	job, exists := sm.lookup(id)
 	if !exists {
-		return SimulationJobStatus{}, fmt.Errorf("simulation %s not found", id)
+		return SimulationJobStatus{}, notFound(id)
 	}
 	stats := job.GetStatus()
 	stats.Statistics, stats.Problem, _ = job.snapshot()
@@ -244,7 +270,7 @@ func (sm *SimulationManagerImpl) GetSimulationStatistics(id string) (SimulationJ
 func (sm *SimulationManagerImpl) GetSimulationResult(id string) (any, error) {
 	job, exists := sm.lookup(id)
 	if !exists {
-		return nil, fmt.Errorf("simulation %s not found", id)
+		return nil, notFound(id)
 	}
 	_, _, result := job.snapshot()
 	return result, nil
@@ -256,7 +282,7 @@ func (sm *SimulationManagerImpl) DeleteSimulation(id string) (SimulationJobStatu
 
 	job, exists := sm.jobs[id]
 	if !exists {
-		return SimulationJobStatus{}, fmt.Errorf("simulation %s not found", id)
+		return SimulationJobStatus{}, notFound(id)
 	}
 
 	// Stop the job's goroutine (running or paused) so that it and the problem's
@@ -271,7 +297,7 @@ func (sm *SimulationManagerImpl) DeleteSimulation(id string) (SimulationJobStatu
 func (sm *SimulationManagerImpl) ConfigureSimulation(id string, parameters *Parameters) error {
 	job, exists := sm.lookup(id)
 	if !exists {
-		return fmt.Errorf("simulation %s not found", id)
+		return notFound(id)
 	}
 
 	err := job.UpdateSimulationParameters(parameters)

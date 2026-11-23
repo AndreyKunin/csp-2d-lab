@@ -65,7 +65,7 @@ Feature: Search parameters
   @FT-SP-05
   Scenario Outline: A search parameter of the wrong type is rejected
     Given a long-running simulation for fixture "D13-mixed-20"
-    When I configure the simulation with raw body '{"parameters": {"<key>": <value>}}'
+    When I send the raw action body '{"action": "configure", "parameters": {"<key>": <value>}}'
     Then the response status is 400
     And the job status is "running"
 

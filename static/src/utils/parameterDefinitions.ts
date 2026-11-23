@@ -3,7 +3,7 @@
 //
 // The default values and the validation rules come from the server
 // (application.yaml; the server validates requests with the same rules):
-// GET /api/v1/service/parameter-definitions, loaded by InputForm. The rules are
+// GET /api/service/v1/parameter-definitions, loaded by InputForm. The rules are
 // set by setParameterRules, the defaults built by defaultParameterValues.
 //
 // Rule DSL: <type><open><min>-<max><close>

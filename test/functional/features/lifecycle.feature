@@ -25,7 +25,7 @@ Feature: Simulation lifecycle
     When I pause the simulation
     Then the response status is 200
     When I pause the simulation
-    Then the response status is not successful
+    Then the response status is 409
     And the error message contains "already paused"
     And the job status is "paused"
 
@@ -33,7 +33,7 @@ Feature: Simulation lifecycle
   Scenario: Resuming a running simulation is rejected
     Given a long-running simulation for fixture "D13-mixed-20"
     When I resume the simulation
-    Then the response status is not successful
+    Then the response status is 409
     And the error message contains "already running"
 
   @FT-LC-06
@@ -71,13 +71,13 @@ Feature: Simulation lifecycle
   @FT-LC-10
   Scenario: Deleting an unknown simulation
     When I call "delete" for an unknown simulation
-    Then the response status is not successful
+    Then the response status is 404
     And the error message contains "not found"
 
   @FT-LC-11
   Scenario Outline: Calls on an unknown simulation report "not found"
     When I call "<action>" for an unknown simulation
-    Then the response status is not successful
+    Then the response status is 404
     And the error message contains "not found"
     And the response arrives within 2 seconds
 
@@ -96,7 +96,7 @@ Feature: Simulation lifecycle
     And I wait for job completion within 30 seconds
     When I pause the simulation
     Then the response arrives within 2 seconds
-    And the response status is not successful
+    And the response status is 409
     And the server is healthy
 
   @FT-LC-13
@@ -105,7 +105,7 @@ Feature: Simulation lifecycle
     And I wait for job completion within 30 seconds
     When I resume the simulation
     Then the response arrives within 2 seconds
-    And the response status is not successful
+    And the response status is 409
     And the server is healthy
 
   @FT-LC-14
@@ -141,3 +141,53 @@ Feature: Simulation lifecycle
     When I delete the simulation
     Then the response status is 200
     And the simulation no longer exists
+
+  # The simulation resource (PUT /api/v1/simulation; POST, GET, DELETE
+  # /api/v1/simulation/<id>): 400 for a body or query that does not parse or
+  # names no known action or format.
+  @FT-LC-17
+  Scenario Outline: An invalid action is rejected and changes nothing
+    Given a long-running simulation for fixture "D13-mixed-20"
+    When I send the raw action body '<body>'
+    Then the response status is 400
+    And the error message contains "<message>"
+    And the job status is "running"
+
+    Examples:
+      | body                | message                 |
+      | {}                  | missing action          |
+      | {"action": "stop"}  | unknown action          |
+      | {"action": 1}       | Unmarshal type error    |
+      | {"action": "pause"  | unexpected EOF          |
+
+  @FT-LC-18
+  Scenario: The status is the default format; an unknown format is rejected
+    Given a long-running simulation for fixture "D13-mixed-20"
+    When I fetch the simulation with format ""
+    Then the response status is 200
+    And the response job status is "running"
+    When I fetch the simulation with format "status"
+    Then the response status is 200
+    When I fetch the simulation with format "xml"
+    Then the response status is 400
+    And the error message contains "unknown format"
+
+  # A failed simulation (a part larger than the sheet): its status reports the
+  # error, but it has no result and cannot be controlled (500); it can be
+  # deleted.
+  @FT-LC-19
+  Scenario: A failed simulation answers 500 except for its status
+    Given a start request from fixture "D10-too-big"
+    And I start the simulation
+    And I wait for job completion within 20 seconds
+    Then the job status is "error"
+    When I fetch the simulation with format "result"
+    Then the response status is 500
+    And the error message contains "failed"
+    When I pause the simulation
+    Then the response status is 500
+    When I configure maxEpochsCount to the remembered epoch
+    Then the response status is 500
+    When I delete the simulation
+    Then the response status is 200
+

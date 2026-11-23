@@ -3,7 +3,6 @@ package ga
 import (
 	"csp2d/problem"
 	"csp2d/util"
-	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -239,7 +238,7 @@ func (job *SimulationJob) UpdateSimulationParameters(parameters *Parameters) err
 	defer job.mu.Unlock()
 
 	if job.status == StatusRunning {
-		return fmt.Errorf("cannot update simulation parameters while simulation is running")
+		return invalidState("cannot update simulation parameters while simulation is running")
 	}
 
 	// The population size is fixed at start (BE-01): the population, the

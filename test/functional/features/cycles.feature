@@ -72,7 +72,7 @@ Feature: Cycles and championship
   @FT-CYC-07
   Scenario: A cycle count that is not a whole number is rejected
     Given a long-running simulation for fixture "D13-mixed-20"
-    When I configure the simulation with raw body '{"parameters": {"cycleCount": 1.5}}'
+    When I send the raw action body '{"action": "configure", "parameters": {"cycleCount": 1.5}}'
     Then the response status is 400
     And the job status is "running"
 

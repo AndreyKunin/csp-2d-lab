@@ -63,7 +63,7 @@ func (w *World) serverIsHealthy() error {
 	if !w.srv.Alive() {
 		return fmt.Errorf("server process is not running: %v", w.srv.ExitError())
 	}
-	resp, err := w.client.WithTimeout(2 * time.Second).Heartbeat()
+	resp, err := w.client.WithTimeout(2 * time.Second).Health()
 	if err != nil {
 		return fmt.Errorf("heartbeat failed: %w", err)
 	}

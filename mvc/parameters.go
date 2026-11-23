@@ -14,7 +14,7 @@ import (
 // Parameter validation (BE-02). Each parameter in defaults.simulationParameters
 // of application.yaml has a default value and a validation rule. The server
 // validates requests with the rules; the UI takes the defaults and the same
-// rules from GET /api/v1/service/parameter-definitions
+// rules from GET /api/service/v1/parameter-definitions
 // (static/src/utils/parameterDefinitions.ts parses the rules with the same
 // DSL). The rule DSL:
 //

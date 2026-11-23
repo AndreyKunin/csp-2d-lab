@@ -76,7 +76,7 @@ func (w *World) requestPdfNotMultipart() error {
 	if err := w.ensureServer(); err != nil {
 		return err
 	}
-	w.record(w.client.Do(http.MethodPost, "/api/v1/pdf/generate", []byte(`{"parts":[]}`), "application/json"))
+	w.record(w.client.Do(http.MethodPost, httpclient.ReportPath, []byte(`{"parts":[]}`), "application/json"))
 	return nil
 }
 

@@ -429,6 +429,50 @@ func TestManagerConfigureEliteCount(t *testing.T) {
 	}
 }
 
+// UT-GA-MGR-18: the manager's errors carry their kind, which the HTTP layer
+// maps to a status: ErrSimulationNotFound (404) for an unknown simulation,
+// ErrInvalidState (409) for a call the status does not allow. The messages
+// are unchanged.
+func TestManagerErrorKinds(t *testing.T) {
+	m := ga.NewSimulationManager()
+	notFound := map[string]error{"pause": m.PauseSimulation("nope"), "resume": m.ResumeSimulation("nope"),
+		"configure": m.ConfigureSimulation("nope", params(6, 2, 10, 10))}
+	_, notFound["status"] = m.GetSimulationStatus("nope")
+	_, notFound["statistics"] = m.GetSimulationStatistics("nope")
+	_, notFound["result"] = m.GetSimulationResult("nope")
+	_, notFound["delete"] = m.DeleteSimulation("nope")
+	for call, err := range notFound {
+		if !errors.Is(err, ga.ErrSimulationNotFound) || err.Error() != "simulation nope not found" {
+			t.Errorf("%s: %v, want ErrSimulationNotFound", call, err)
+		}
+	}
+
+	st, err := m.StartSimulation(ga.NewSimulation(params(6, 2, 1000000, 1000000)), &fakes.Problem{InputsSize: 3, EpochDelay: time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.ResumeSimulation(st.ID); !errors.Is(err, ga.ErrInvalidState) || !strings.Contains(err.Error(), "already running") {
+		t.Errorf("resume a running job: %v", err)
+	}
+	if err := m.ConfigureSimulation(st.ID, params(6, 2, 10, 10)); !errors.Is(err, ga.ErrInvalidState) {
+		t.Errorf("configure a running job: %v", err)
+	}
+	testutil.Within(t, 5*time.Second, "pause", func() { _ = m.PauseSimulation(st.ID) })
+	if err := m.PauseSimulation(st.ID); !errors.Is(err, ga.ErrInvalidState) || !strings.Contains(err.Error(), "already paused") {
+		t.Errorf("pause a paused job: %v", err)
+	}
+	if errors.Is(err, ga.ErrSimulationNotFound) {
+		t.Error("a state error is not a not-found error")
+	}
+	_, _ = m.DeleteSimulation(st.ID)
+
+	done, _ := m.StartSimulation(ga.NewSimulation(params(6, 2, 2, 1000)), &fakes.Problem{InputsSize: 3})
+	waitStatus(t, m, done.ID, ga.StatusCompleted)
+	if err := m.PauseSimulation(done.ID); !errors.Is(err, ga.ErrInvalidState) || !strings.Contains(err.Error(), "completed") {
+		t.Errorf("pause a completed job: %v", err)
+	}
+}
+
 // UT-GA-MGR-04: control calls on a completed job return promptly.
 func TestManagerCompletedJobDoesNotHang(t *testing.T) {
 	m := ga.NewSimulationManager()

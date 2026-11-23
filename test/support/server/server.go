@@ -114,7 +114,7 @@ type Server struct {
 	mu       sync.Mutex
 }
 
-// Start launches the binary and waits until /heartbeat answers 200.
+// Start launches the binary and waits until the health check answers 200.
 func Start(opts Options) (*Server, error) {
 	if opts.Binary == "" || opts.ConfigFile == "" {
 		return nil, errors.New("server.Start: Binary and ConfigFile are required")
@@ -200,7 +200,7 @@ func (s *Server) waitReady(timeout time.Duration) error {
 			return fmt.Errorf("server not ready within %s", timeout)
 		default:
 		}
-		resp, err := client.Get(s.URL + "/heartbeat")
+		resp, err := client.Get(s.URL + "/api/service/v1/healthz")
 		if err == nil {
 			_ = resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
