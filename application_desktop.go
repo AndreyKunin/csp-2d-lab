@@ -33,13 +33,13 @@ func run(port int, ln net.Listener, url string) {
 
 func main() {
 
-	port, ln, err := findFreePort(8080)
+	port, ln, err := getFreeSocket(8080)
 	if err != nil {
 		fmt.Println("Could not find a free port:", err)
 		return
 	}
 
-	url := fmt.Sprintf("http://localhost:%d", port)
+	url := fmt.Sprintf("http://127.0.0.1:%d", port) // the address getFreeSocket listens on
 	fmt.Printf("Starting server at %s\n", url)
 
 	if IsLaunchedFromTerminal() {
