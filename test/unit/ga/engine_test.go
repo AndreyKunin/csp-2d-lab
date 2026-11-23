@@ -124,16 +124,20 @@ func TestSimulateErrorPropagation(t *testing.T) {
 	}
 }
 
-// UT-GA-SIM-07: an exhausted gene pool (nil random individual) must not panic.
+// UT-GA-SIM-07: an exhausted gene pool (a nil individual from the random
+// fill) is an error (BE-04): Simulate returns it instead of storing nil in the
+// population, which would panic in the next epoch.
 func TestSimulateNilRandomIndividual(t *testing.T) {
-	testutil.Pending(t, "a nil individual from the random fill is stored in the population and panics in the next epoch")
 	fake := &fakes.Problem{InputsSize: 5, NilRandomIndividual: true}
 	defer func() {
 		if r := recover(); r != nil {
 			t.Fatalf("Simulate panicked: %v", r)
 		}
 	}()
-	_ = ga.Simulate(ga.NewSimulationJob("test", ga.NewSimulation(params(9, 2, 3, 1000)), fake))
+	err := ga.Simulate(ga.NewSimulationJob("test", ga.NewSimulation(params(9, 2, 3, 1000)), fake))
+	if err == nil || !strings.Contains(err.Error(), "exhausted") {
+		t.Fatalf("error %v, want the exhausted gene pool", err)
+	}
 }
 
 // UT-GA-TS-01..03: tournament selection probabilities.

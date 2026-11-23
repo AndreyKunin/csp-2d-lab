@@ -4,6 +4,7 @@ import (
 	"csp2d/problem"
 	"csp2d/util"
 	"errors"
+	"fmt"
 	"math"
 	"math/rand"
 	"time"
@@ -187,7 +188,6 @@ func Simulate(job *SimulationJob) error {
 		// repopulating the generation except the elite (start-over: every slot,
 		// the saved elites first when the championship begins)
 		newGenerationCount := len(newGeneration)
-		var failuresGeneration = 0
 		first := eliteCount
 		var seeds []problem.Individual
 		if startOver {
@@ -207,13 +207,13 @@ func Simulate(job *SimulationJob) error {
 					return err3
 				}
 				if ind == nil {
-					failuresGeneration = failuresGeneration + 1
+					// The gene pool is exhausted (BE-04): a nil individual would
+					// panic in the next epoch, so the job ends with an error,
+					// as Crossover does in the same situation.
+					return fmt.Errorf("unable to generate a random individual at epoch %d: all possible combinations exhausted", epochNumber)
 				}
 				species[i] = ind
 			}
-		}
-		if failuresGeneration > 0 {
-			util.Warning.Printf("Unable to generate %d species. All possible combinations exhausted. Epoch %d.\n", failuresGeneration, epochNumber)
 		}
 
 		// End of epoch: rotate generational arenas. The just-produced offspring
