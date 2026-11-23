@@ -254,7 +254,7 @@ func computeState(simulation *Simulation, population *problem.Population) {
 	epochClone := simulation.State.CurrentEpoch
 	epochClone.Failures = failures
 	simulation.State.CurrentWindow.addEpoch(&epochClone, simulation.Parameters.WindowSize)
-	simulation.State.computeWindowState()
+	simulation.State.computeWindowState(simulation.Parameters.PopulationSize)
 }
 
 func computeEpochState(simulation *Simulation, population *problem.Population) *EpochState {

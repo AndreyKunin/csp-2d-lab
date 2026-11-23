@@ -46,18 +46,49 @@ func TestComputeWindowState(t *testing.T) {
 		ga.EpochState{EpochNumber: 1, AverageFitness: 10, FitnessDeviation: 2, AverageEliteFitness: 4, EliteFitnessDeviation: 1, Failures: 3},
 		ga.EpochState{EpochNumber: 2, AverageFitness: 20, FitnessDeviation: 4, AverageEliteFitness: 6, EliteFitnessDeviation: 3, Failures: 1},
 	)
-	st.ComputeWindowStateForTest()
+	st.ComputeWindowStateForTest(4)
 	w := st.CurrentWindow
 	want := map[string][2]float64{
 		"averageFitness":          {w.AverageFitness, 15},
 		"averageFitnessDeviation": {w.AverageFitnessDeviation, 3},
 		"averageEliteFitness":     {w.AverageEliteFitness, 5},
 		"eliteFitnessDeviation":   {w.EliteFitnessDeviation, 2},
-		"saturationRate":          {w.SaturationRate, 2}, // failures per epoch: (3+1)/2
+		"saturationRate":          {w.SaturationRate, 0.5}, // failures per individual: (3+1) / (2 epochs × 4)
 	}
 	for name, gw := range want {
 		if gw[0] != gw[1] {
 			t.Errorf("%s = %g, want %g", name, gw[0], gw[1])
 		}
+	}
+}
+
+// UT-GA-WS-07: the saturation rate is the share of the population replaced by
+// migrants, averaged over the window: 0 without failures, 1 when every
+// individual of every epoch is a migrant, finite for an empty population.
+func TestSaturationRateIsShareOfPopulation(t *testing.T) {
+	cases := []struct {
+		name     string
+		failures []int
+		pop      int
+		want     float64
+	}{
+		{"no failures", []int{0, 0, 0}, 10, 0},
+		{"every individual a migrant", []int{10, 10}, 10, 1},
+		{"one epoch in the window", []int{3}, 100, 0.03},
+		{"large population", []int{12, 12}, 22500, 12.0 / 22500},
+		{"population 0 stays finite", []int{5}, 0, 0},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var epochs []ga.EpochState
+			for i, f := range c.failures {
+				epochs = append(epochs, ga.EpochState{EpochNumber: i + 1, Failures: f})
+			}
+			st := windowOf(epochs...)
+			st.ComputeWindowStateForTest(c.pop)
+			if got := st.CurrentWindow.SaturationRate; math.Abs(got-c.want) > 1e-12 || math.IsNaN(got) {
+				t.Fatalf("saturation rate %g, want %g", got, c.want)
+			}
+		})
 	}
 }

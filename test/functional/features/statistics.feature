@@ -31,7 +31,7 @@ Feature: Status statistics
     Then the selected species are sorted and number 5
 
   # D04 has a tiny gene space, so offspring collide with the elites often.
-  @FT-STAT-07 @pending
+  @FT-STAT-07
   Scenario: The saturation rate is a rate
     Given a long-running simulation for fixture "D04-four-identical"
     And the epoch number increases within 10 seconds

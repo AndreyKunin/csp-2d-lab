@@ -18,7 +18,7 @@ type WindowState struct {
 	AverageFitnessDeviation float64       `json:"averageFitnessDeviation"` // Average Fitness Deviation (Diversity Index)
 	AverageEliteFitness     float64       `json:"averageEliteFitness"`     // Average Elite Fitness
 	EliteFitnessDeviation   float64       `json:"eliteFitnessDeviation"`   // Current Elite Fitness Deviation
-	SaturationRate          float64       `json:"saturationRate"`          // Number of crossover/mutation failures divided by the number of the epochs
+	SaturationRate          float64       `json:"saturationRate"`          // Crossover/mutation failures (migrants) per individual, averaged over the window
 }
 
 func (window *WindowState) addEpoch(newState *EpochState, windowSize int) {
@@ -43,7 +43,7 @@ type State struct {
 	ChampionshipSince int `json:"championshipSince"`
 }
 
-func (state *State) computeWindowState() {
+func (state *State) computeWindowState(populationSize int) {
 	var window = state.CurrentWindow
 	var epochs = window.Epochs
 	var size = len(epochs)
@@ -63,6 +63,9 @@ func (state *State) computeWindowState() {
 	window.AverageFitnessDeviation = avgFitnessDeviation / float64(size)
 	window.AverageEliteFitness = avgEliteFitness / float64(size)
 	window.EliteFitnessDeviation = avgEliteFitnessDeviation / float64(size)
-	window.SaturationRate = float64(failures) / float64(size)
+	window.SaturationRate = 0
+	if populationSize > 0 {
+		window.SaturationRate = float64(failures) / float64(size*populationSize)
+	}
 	state.CurrentWindow = window
 }

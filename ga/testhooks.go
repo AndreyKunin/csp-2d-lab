@@ -31,8 +31,8 @@ func (window *WindowState) AddEpochForTest(newState *EpochState, windowSize int)
 	window.addEpoch(newState, windowSize)
 }
 
-func (state *State) ComputeWindowStateForTest() {
-	state.computeWindowState()
+func (state *State) ComputeWindowStateForTest(populationSize int) {
+	state.computeWindowState(populationSize)
 }
 
 // JobForTest gives tests access to a job's simulation (for driving Simulate).
