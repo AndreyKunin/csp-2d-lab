@@ -5,7 +5,7 @@ SERVER_PORT  ?= 8080
 DEV_UI_PORT  ?= 3000
 DOCKER_IMAGE ?= csp2d
 DOCKER_TAG   ?= latest
-VERSION      ?= 1.0
+VERSION      ?= 1.1
 
 # ── Local Go build & run ──────────────────────────────────────────────────────
 .PHONY: build
