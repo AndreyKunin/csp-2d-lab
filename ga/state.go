@@ -1,7 +1,5 @@
 package ga
 
-import "math"
-
 // EpochState Some state metrics are actual in the single epoch only
 type EpochState struct {
 	BestFitness           float64 `json:"bestFitness"`           // Best Fitness
@@ -20,7 +18,7 @@ type WindowState struct {
 	AverageFitnessDeviation float64       `json:"averageFitnessDeviation"` // Average Fitness Deviation (Diversity Index)
 	AverageEliteFitness     float64       `json:"averageEliteFitness"`     // Average Elite Fitness
 	EliteFitnessDeviation   float64       `json:"eliteFitnessDeviation"`   // Current Elite Fitness Deviation
-	SaturationRate          float64       `json:"saturationRate"`          // Number of crossover/mutation failures divided by the number of the epochs
+	SaturationRate          float64       `json:"saturationRate"`          // Crossover/mutation failures (migrants) per individual, averaged over the window
 }
 
 func (window *WindowState) addEpoch(newState *EpochState, windowSize int) {
@@ -37,14 +35,15 @@ func (window *WindowState) addEpoch(newState *EpochState, windowSize int) {
 }
 
 type State struct {
-	CurrentEpoch   EpochState  `json:"epochState"`     // State changed each epoch
-	CurrentWindow  WindowState `json:"windowState"`    // Summary state over a sliding window
-	SaturatedSince int         `json:"saturatedSince"` // The epoch number since what the crossover set is saturated
-	ConvergedSince int         `json:"convergedSince"` // The epoch number since what the elite set is converged
-	NewEpochSince  int         `json:"newEpochSince"`  // The first epoch number in the certain era
+	CurrentEpoch  EpochState  `json:"epochState"`  // State changed each epoch
+	CurrentWindow WindowState `json:"windowState"` // Summary state over a sliding window
+	// Cycles and championship (ga.go): finished cycles and the epoch the
+	// championship began (0 = not yet).
+	Cycles            int `json:"cycles"`
+	ChampionshipSince int `json:"championshipSince"`
 }
 
-func (state *State) computeWindowState() {
+func (state *State) computeWindowState(populationSize int) {
 	var window = state.CurrentWindow
 	var epochs = window.Epochs
 	var size = len(epochs)
@@ -64,12 +63,9 @@ func (state *State) computeWindowState() {
 	window.AverageFitnessDeviation = avgFitnessDeviation / float64(size)
 	window.AverageEliteFitness = avgEliteFitness / float64(size)
 	window.EliteFitnessDeviation = avgEliteFitnessDeviation / float64(size)
-	window.SaturationRate = float64(failures) / float64(size)
+	window.SaturationRate = 0
+	if populationSize > 0 {
+		window.SaturationRate = float64(failures) / float64(size*populationSize)
+	}
 	state.CurrentWindow = window
-	if state.SaturatedSince == 0 && window.SaturationRate > 0 {
-		state.SaturatedSince = state.CurrentEpoch.EpochNumber
-	}
-	if state.ConvergedSince == 0 && math.Abs(window.EliteFitnessDeviation) < 0.000001 {
-		state.ConvergedSince = state.CurrentEpoch.EpochNumber
-	}
 }

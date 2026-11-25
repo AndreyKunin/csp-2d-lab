@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"slices"
 	"sort"
 	"strings"
 	"unsafe"
@@ -18,9 +19,12 @@ type Csp2dProblem interface {
 }
 
 type Csp2dProblemImpl struct {
-	inputs      []InputDefinition
-	constraints *Constraints
-	population  *problem.Population
+	// Search parameters (SetSearchParameters, mutation.go).
+	repairWeight, flipWeight int
+	donorFraction            float64
+	inputs                   []InputDefinition
+	constraints              *Constraints
+	population               *problem.Population
 	// protectedGenotype keys are compact byte-strings produced from the
 	// numeric-label representation of a postfix (see toNumLabelKey).
 	protectedGenotype map[string]struct{}
@@ -32,13 +36,33 @@ type Csp2dProblemImpl struct {
 	// the same rank — this matches the original toString-based equivalence.
 	// Ranks start at 1; 0 is reserved.
 	labelRank []int32
+
+	// Scratch buffers of NewRandomIndividual (PERF-01), 2n-1 ints each.
+	randShuffled, randPostfix, randPending []int
 }
 
 func NewCsp2dProblem(inputs []InputDefinition, constraints *Constraints) problem.Problem {
 	return &Csp2dProblemImpl{
-		inputs:      inputs,
-		constraints: constraints,
+		inputs:        inputs,
+		constraints:   constraints,
+		repairWeight:  defaultRepairWeight,
+		flipWeight:    defaultFlipWeight,
+		donorFraction: defaultDonorFraction,
 	}
+}
+
+// Release implements ga.Releaser. The job calls it once its goroutine has
+// ended: the arenas go back to the process-wide arena budget, and the
+// population and protection set become garbage. Statistics and results were
+// published as copies, so nothing reads them any more; GetInputsSize keeps
+// working.
+func (p *Csp2dProblemImpl) Release() {
+	if p.arena != nil {
+		p.arena.Release()
+		p.arena = nil
+	}
+	p.population = nil
+	p.protectedGenotype = nil
 }
 
 func (p *Csp2dProblemImpl) GetInputsSize() int {
@@ -75,6 +99,9 @@ func (p *Csp2dProblemImpl) NewPopulation(size int, eliteCount int, rnd *rand.Ran
 
 	postfixLen := len(p.inputs)*2 - 1
 	p.buildLabelRanks()
+	if p.arena != nil {
+		p.arena.Release() // a previous population's arena goes back to the budget
+	}
 	p.arena = NewArena(postfixLen, size, eliteCount)
 
 	for len(species) < size {
@@ -103,9 +130,17 @@ func (p *Csp2dProblemImpl) NewRandomIndividual(rnd *rand.Rand) (problem.Individu
 	idsSize := p.GetInputsSize()
 	postfixLen := idsSize*2 - 1 // the number of Ops is always idsSize - 1 for the binary tree
 
-	for j := 0; j < MaxIndividualCreationRetries; j++ {
-		shuffledPostfix := make([]int, postfixLen)
-		for i := 0; i < idsSize; i++ {
+	// Scratch buffers reused across calls (the problem is single-goroutine, like
+	// the arena). The returned individual gets its own copy via GenAlloc.
+	if cap(p.randShuffled) < postfixLen {
+		p.randShuffled = make([]int, postfixLen)
+		p.randPostfix = make([]int, postfixLen)
+		p.randPending = make([]int, postfixLen)
+	}
+	shuffledPostfix := p.randShuffled[:postfixLen]
+
+	for range MaxIndividualCreationRetries {
+		for i := range idsSize {
 			shuffledPostfix[i] = i
 		}
 		for i := idsSize; i < postfixLen; i++ {
@@ -115,44 +150,36 @@ func (p *Csp2dProblemImpl) NewRandomIndividual(rnd *rand.Rand) (problem.Individu
 			shuffledPostfix[i], shuffledPostfix[j] = shuffledPostfix[j], shuffledPostfix[i]
 		})
 
-		// constructing a valid postfix notation directly from
-		// a pre-randomized slice of operands (>=0) and operators (<0),
-
-		// Each entry in completeStack is a postfix fragment (slice of ints).
-		completeStack := make([][]int, 0, postfixLen)
-		incompleteStack := make([]int, 0, postfixLen)
-
+		// Build a valid postfix from the pre-randomized operands (>=0) and
+		// operators (<0) in O(n). Operands are emitted as they come; operators
+		// wait on a stack and one is emitted whenever two complete subtrees are
+		// available. A merged subtree "left right op" is always the latest run
+		// of the output, so emitting op is the whole merge (PERF-01): no
+		// fragment slices are built.
+		postfix := p.randPostfix[:0]
+		pending := p.randPending[:0]
+		complete := 0 // complete subtrees on the (implicit) stack
 		for _, element := range shuffledPostfix {
 			if element < 0 { // operator
-				incompleteStack = append(incompleteStack, element)
+				pending = append(pending, element)
 			} else { // operand
-				completeStack = append(completeStack, []int{element})
+				postfix = append(postfix, element)
+				complete++
 			}
-			for len(completeStack) > 1 && len(incompleteStack) > 0 {
-				op := incompleteStack[len(incompleteStack)-1]
-				incompleteStack = incompleteStack[:len(incompleteStack)-1]
-
-				right := completeStack[len(completeStack)-1]
-				left := completeStack[len(completeStack)-2]
-				completeStack = completeStack[:len(completeStack)-2]
-
-				// postfix: left right op
-				merged := make([]int, 0, len(left)+len(right)+1)
-				merged = append(merged, left...)
-				merged = append(merged, right...)
-				merged = append(merged, op)
-				completeStack = append(completeStack, merged)
+			for complete > 1 && len(pending) > 0 {
+				postfix = append(postfix, pending[len(pending)-1])
+				pending = pending[:len(pending)-1]
+				complete--
 			}
 		}
-		if len(incompleteStack) > 0 || len(completeStack) != 1 {
+		if len(pending) > 0 || complete != 1 {
 			return nil, errors.New("invalid elements: unable to build a postfix notation")
 		}
-		arr := p.arena.GenAlloc(completeStack[0])
-
-		if p.isProtected(arr) {
+		// Protected attempts are rejected before they take arena space (MEM-02).
+		if p.isProtected(postfix) {
 			continue
 		}
-		return newIndividual(arr), nil
+		return newIndividual(p.arena.GenAlloc(postfix)), nil
 	}
 	// cannot create even a random individual, the gene pool is full
 	return nil, nil
@@ -173,7 +200,14 @@ func (p *Csp2dProblemImpl) evaluateFitness(individual *Csp2dIndividualImpl) erro
 	if individual.IsFitnessComputed() {
 		return nil
 	}
-	var forest, err = p.getForest(individual)
+	return p.cacheForest(individual, nil)
+}
+
+// cacheForest decodes the individual and caches its forest and fitness. The
+// forest's node slice reuses `reuse` when it is large enough; reuse must be
+// referenced by nothing else (the forest of a superseded child, MEM-04).
+func (p *Csp2dProblemImpl) cacheForest(individual *Csp2dIndividualImpl, reuse []MeteredNode) error {
+	var forest, err = p.getForestInto(individual, reuse)
 	if err != nil {
 		return err
 	}
@@ -184,23 +218,54 @@ func (p *Csp2dProblemImpl) evaluateFitness(individual *Csp2dIndividualImpl) erro
 	return nil
 }
 
+// getForest decodes the individual and copies the sheets' postfixes into the
+// generation arena, so the forest can be cached on the individual.
 func (p *Csp2dProblemImpl) getForest(individual *Csp2dIndividualImpl) ([]MeteredNode, error) {
-	postfix := individual.postfix
-	n := len(postfix)
+	return p.getForestInto(individual, nil)
+}
 
+// getForestInto is getForest with the node slice taken from reuse when it is
+// large enough.
+func (p *Csp2dProblemImpl) getForestInto(individual *Csp2dIndividualImpl, reuse []MeteredNode) ([]MeteredNode, error) {
+	forest, err := p.decodeForest(individual.postfix)
+	if err != nil {
+		return nil, err
+	}
+	// Copy surviving nodes out of the pool so the pool can be reused.
+	// Postfix slices are allocated from the generational arena: they live
+	// for at most one epoch unless the individual becomes an elite.
+	var result []MeteredNode
+	if cap(reuse) >= len(forest) {
+		result = reuse[:len(forest)]
+	} else {
+		result = make([]MeteredNode, len(forest))
+	}
+	for i, node := range forest {
+		copied := node
+		copied.postfix = p.arena.GenAlloc(node.postfix)
+		result[i] = copied
+	}
+	return result, nil
+}
+
+// decodeForest decodes a postfix into its sheets without taking arena space:
+// the returned slice and the sheets' postfixes live in scratch buffers and are
+// valid only until the next decode. Use it for trials that are usually
+// discarded.
+func (p *Csp2dProblemImpl) decodeForest(postfix []int) ([]MeteredNode, error) {
 	// Borrow from pools
 	nodePool := p.arena.GetForestBuffer()
 	buf := p.arena.GetForestSliceBuffer()
 
 	nodeIdx := 0
 	bufOK := true
-	stack := make([]MeteredNode, 0, n/2+1)
-	forest := make([]MeteredNode, 0, n/2+1)
+	stack := p.arena.decodeStack[:0]
+	forest := p.arena.decodeSheets[:0]
 
 	for _, id := range postfix {
 		if id < 0 {
 			if len(stack) < 2 {
-				return nil, fmt.Errorf("invalid postfix: %s", p.toString(individual.postfix))
+				return nil, fmt.Errorf("invalid postfix: %s", p.toString(postfix))
 			}
 			right := stack[len(stack)-1]
 			left := stack[len(stack)-2]
@@ -266,25 +331,14 @@ func (p *Csp2dProblemImpl) getForest(individual *Csp2dIndividualImpl) ([]Metered
 	}
 
 	if len(stack) != 1 {
-		return nil, fmt.Errorf("invalid postfix: %s", p.toString(individual.postfix))
+		return nil, fmt.Errorf("invalid postfix: %s", p.toString(postfix))
 	}
 	err := p.validateMetered(stack[0], p.constraints)
 	if err != nil {
 		return nil, err
 	}
 	forest = append(forest, stack[0])
-
-	// Copy surviving nodes out of the pool so the pool can be reused.
-	// Postfix slices are allocated from the generational arena: they live
-	// for at most one epoch unless the individual becomes an elite.
-	result := make([]MeteredNode, len(forest))
-	for i, node := range forest {
-		copied := node
-		copied.postfix = p.arena.GenAlloc(node.postfix)
-		result[i] = copied
-	}
-
-	return result, nil
+	return forest, nil
 }
 
 func (p *Csp2dProblemImpl) validateMetered(node MeteredNode, constraints *Constraints) error {
@@ -356,9 +410,12 @@ func (p *Csp2dProblemImpl) reduce(id int, m1 Metrics, m2 Metrics, gap float64) M
 	l2 := m2.longSide
 	var newS, newL float64
 	if id == NumS {
-		if s1 > l2 {
+		// A child is rotated when it fits across the other child's short side,
+		// ties included: a rotation on a tie never makes the join longer, and
+		// without it some exact tilings have no encoding (GA-12).
+		if s1 >= l2 {
 			s2, l2 = l2, s2
-		} else if s2 > l1 {
+		} else if s2 >= l1 {
 			s1, l1 = l1, s1
 		}
 		newL = l1 + l2 + gap
@@ -452,8 +509,9 @@ func (p *Csp2dProblemImpl) PromoteElites(eliteCount int) {
 	}
 	p.eliteCount = eliteCount
 
-	// Build a fresh elite arena sized to eliteCount and swap it in.
-	p.arena.RebuildEliteArena(eliteCount)
+	// Reuse the elite buffer of two promotions ago, unless an individual of
+	// the population still points into it (MEM-03).
+	p.arena.NextEliteArena(eliteCount, p.populationReferences)
 
 	for i := 0; i < eliteCount; i++ {
 		ind, _ := species[i].(*Csp2dIndividualImpl)
@@ -465,6 +523,26 @@ func (p *Csp2dProblemImpl) PromoteElites(eliteCount int) {
 			ind.meteredForest[k].postfix = p.arena.EliteAlloc(ind.meteredForest[k].postfix)
 		}
 	}
+}
+
+// populationReferences reports whether any individual of the population (its
+// postfix or a cached sheet) points into the given arena.
+func (p *Csp2dProblemImpl) populationReferences(arena *PostfixArena) bool {
+	for _, ind := range *p.population.Species {
+		individual, _ := ind.(*Csp2dIndividualImpl)
+		if individual == nil {
+			continue
+		}
+		if arena.Contains(individual.postfix) {
+			return true
+		}
+		for _, tree := range individual.meteredForest {
+			if arena.Contains(tree.postfix) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // RotateGenerations swaps the generational buffers so the just-written
@@ -487,18 +565,20 @@ func (p *Csp2dProblemImpl) Crossover(crossoverSet []*problem.Individual, rnd *ra
 		parent2 := (*crossoverSet[i+1]).(*Csp2dIndividualImpl)
 		offspringProduced := false
 		for j := 0; j < MaxIndividualCreationRetries; j++ {
-			var offspring1, offspring2, _, _, err = p.pmx(parent1, parent2, rnd)
+			var postfix1, postfix2, err = p.subtreeCrossover(parent1, parent2, rnd)
 			if err != nil {
 				return nil, failures, err
 			}
-			if p.isProtected(offspring1.postfix) {
+			if p.isProtected(postfix1) {
 				continue
 			}
-			if p.isProtected(offspring2.postfix) {
+			if p.isProtected(postfix2) {
 				continue
 			}
-			var o1 problem.Individual = offspring1
-			var o2 problem.Individual = offspring2
+			// Accepted: copy both children out of the crossover scratch (MEM-02);
+			// rejected attempts allocate nothing (MEM-04).
+			var o1 problem.Individual = newIndividual(p.arena.GenAlloc(postfix1))
+			var o2 problem.Individual = newIndividual(p.arena.GenAlloc(postfix2))
 			offspringSet = append(offspringSet, &o1)
 			offspringSet = append(offspringSet, &o2)
 			offspringProduced = true
@@ -530,87 +610,160 @@ func (p *Csp2dProblemImpl) Crossover(crossoverSet []*problem.Individual, rnd *ra
 	return offspringSet, failures, nil
 }
 
-func (p *Csp2dProblemImpl) pmx(parent1 *Csp2dIndividualImpl, parent2 *Csp2dIndividualImpl, rnd *rand.Rand) (*Csp2dIndividualImpl, *Csp2dIndividualImpl, int, int, error) {
-	var postfix1 = parent1.postfix
-	var postfix2 = parent2.postfix
-	var treeSize = len(postfix1)
-	var leafsSize = treeSize/2 + 1
-	// Order leaves in the postfix
-	var order1 = make([]int, 0, leafsSize)
-	var order2 = make([]int, 0, leafsSize)
-	for i := 0; i < treeSize; i++ {
-		if postfix1[i] >= 0 {
-			order1 = append(order1, postfix1[i])
+// subtreeCrossover recombines two parents by subtree crossover (GA-01): child 1
+// is parent 1 with a subtree of parent 2 grafted in (graftSubtree), child 2 the
+// same with the roles swapped. A subtree of a slicing tree is a building block
+// (its parts packed with their shape and operators) and is a contiguous segment
+// of the postfix, so no tree is built: each child costs O(L).
+//
+// It returns the children's postfixes, which live in the arena's crossover
+// scratch and are valid only until the next crossover: a caller that keeps a
+// child copies it into the generation arena and wraps it in an individual
+// (Crossover does so after the protection check).
+func (p *Csp2dProblemImpl) subtreeCrossover(parent1, parent2 *Csp2dIndividualImpl, rnd *rand.Rand) ([]int, []int, error) {
+	if len(parent1.postfix) != len(parent2.postfix) {
+		return nil, nil, fmt.Errorf("crossover of postfixes of different lengths %d and %d", len(parent1.postfix), len(parent2.postfix))
+	}
+	child1, child2 := p.arena.GetCrossoverOffspring()
+	child1 = p.graftSubtree(parent1.postfix, parent2.postfix, rnd, child1)
+	child2 = p.graftSubtree(parent2.postfix, parent1.postfix, rnd, child2)
+	return child1, child2, nil
+}
+
+// cloneRetries bounds how often graftSubtree re-picks the graft point and
+// operator when the child equals the recipient.
+var cloneRetries = 4
+
+// graftSubtree appends to dst a child of recipient that carries a subtree of
+// donor:
+//  1. pick a donor subtree with 2 .. max(2, n/2) leaves (n = part count);
+//  2. remove its parts from recipient, collapsing each operator left with one
+//     operand (removeLeaves);
+//  3. join it to a random subtree of the rest with a random operator (graftAt).
+//
+// If the child equals recipient, step 3 is repeated, up to cloneRetries times.
+// A postfix with one part is copied.
+func (p *Csp2dProblemImpl) graftSubtree(recipient, donor []int, rnd *rand.Rand, dst []int) []int {
+	if len(donor) < 3 {
+		return append(dst, recipient...)
+	}
+	start, end := p.pickDonorSubtree(donor, rnd)
+	segment := donor[start : end+1]
+	rest := p.removeLeaves(recipient, segment)
+	if len(rest) == 0 { // the subtree holds every part
+		return append(dst, segment...)
+	}
+	base := len(dst)
+	for attempt := 1; ; attempt++ {
+		op := NumS
+		if rnd.Intn(2) == 1 {
+			op = NumL
 		}
-		if postfix2[i] >= 0 {
-			order2 = append(order2, postfix2[i])
+		dst = graftAt(dst[:base], rest, segment, rnd.Intn(len(rest)), op)
+		if attempt == cloneRetries || !samePostfix(dst[base:], recipient) {
+			return dst
 		}
 	}
-	// Select crossover points
-	var pointLeft = rnd.Intn(leafsSize)
-	var pointRight = pointLeft
-	for {
-		pointRight = rnd.Intn(leafsSize)
-		if pointRight != pointLeft {
-			break
+}
+
+// pickDonorSubtree returns the span [start, end] of a random subtree of postfix
+// with 2 .. max(2, n/2) leaves. Every tree with 2 or more leaves has one: an
+// operator over two leaves.
+func (p *Csp2dProblemImpl) pickDonorSubtree(postfix []int, rnd *rand.Rand) (start, end int) {
+	maxLeaves := max(2, int(p.donorFraction*float64(len(postfix)/2+1)))
+	leaves := p.arena.crossoverLeaves[:0] // leaf count of each pending subtree
+	ends := p.arena.crossoverEnds[:0]     // operator positions that qualify
+	for i, id := range postfix {
+		if id >= 0 {
+			leaves = append(leaves, 1)
+			continue
+		}
+		count := leaves[len(leaves)-2] + leaves[len(leaves)-1]
+		leaves = append(leaves[:len(leaves)-2], count)
+		if count <= maxLeaves {
+			ends = append(ends, i)
 		}
 	}
-	if pointLeft > pointRight {
-		pointLeft, pointRight = pointRight, pointLeft
+	p.arena.crossoverLeaves, p.arena.crossoverEnds = leaves, ends
+	end = ends[rnd.Intn(len(ends))]
+	return p.subtreeSpan(postfix, end), end
+}
+
+// removeLeaves returns postfix without the parts of segment. An operator that
+// loses one operand is dropped: the other operand, already written as one
+// contiguous run, takes its place. One that loses both is dropped too.
+//
+// The result lives in the arena's crossover scratch and is valid until the
+// next call.
+func (p *Csp2dProblemImpl) removeLeaves(postfix, segment []int) []int {
+	removed := p.arena.crossoverRemoved
+	if need := len(postfix)/2 + 1; len(removed) < need {
+		removed = make([]bool, need)
+		p.arena.crossoverRemoved = removed
 	}
-	var mapping1 = make(map[int]int)
-	var mapping2 = make(map[int]int)
-	for i := pointLeft; i <= pointRight; i++ {
-		// Swap middle segment
-		order1[i], order2[i] = order2[i], order1[i]
-		// Determine mapping relationship
-		mapping1[order1[i]] = order2[i]
-		mapping2[order2[i]] = order1[i]
+	for _, id := range segment {
+		if id >= 0 {
+			removed[id] = true
+		}
 	}
-	// Legalize offspring (rearrange to remove duplicates)
-	for i := 0; i < leafsSize; i++ {
-		if i < pointLeft || i > pointRight {
-			value1 := order1[i]
-			value2 := order2[i]
-			for {
-				value, exists := mapping1[value1]
-				if !exists {
-					break
-				}
-				value1 = value
+	out := p.arena.crossoverRest[:0]
+	present := p.arena.crossoverPresent[:0] // one flag per pending subtree
+	for _, id := range postfix {
+		if id >= 0 {
+			keep := !removed[id]
+			if keep {
+				out = append(out, id)
 			}
-			for {
-				value, exists := mapping2[value2]
-				if !exists {
-					break
-				}
-				value2 = value
-			}
-			order1[i] = value1
-			order2[i] = value2
+			present = append(present, keep)
+			continue
+		}
+		left, right := present[len(present)-2], present[len(present)-1]
+		if left && right {
+			out = append(out, id)
+		}
+		present = append(present[:len(present)-2], left || right)
+	}
+	for _, id := range segment {
+		if id >= 0 {
+			removed[id] = false
 		}
 	}
-	// Replace leaves with offspring
-	offspringPostfix1 := p.arena.GenAllocN(treeSize)
-	offspringPostfix2 := p.arena.GenAllocN(treeSize)
-	j1 := 0
-	j2 := 0
-	for i := 0; i < treeSize; i++ {
-		if postfix1[i] >= 0 {
-			offspringPostfix1 = append(offspringPostfix1, order1[j1])
-			j1++
-		} else {
-			offspringPostfix1 = append(offspringPostfix1, postfix1[i])
-		}
-		if postfix2[i] >= 0 {
-			offspringPostfix2 = append(offspringPostfix2, order2[j2])
-			j2++
-		} else {
-			offspringPostfix2 = append(offspringPostfix2, postfix2[i])
+	p.arena.crossoverRest, p.arena.crossoverPresent = out, present
+	return out
+}
+
+// graftAt appends to dst the postfix rest with segment joined, by operator op,
+// to the subtree of rest that ends at position k: rest[:k+1] segment op
+// rest[k+1:]. Every token ends a subtree, so every k in [0, len(rest)) gives a
+// valid postfix.
+func graftAt(dst, rest, segment []int, k, op int) []int {
+	dst = append(dst, rest[:k+1]...)
+	dst = append(dst, segment...)
+	dst = append(dst, op)
+	return append(dst, rest[k+1:]...)
+}
+
+func samePostfix(a, b []int) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
 		}
 	}
-	// Build offspring individuals
-	i1 := newIndividual(offspringPostfix1).(*Csp2dIndividualImpl)
-	i2 := newIndividual(offspringPostfix2).(*Csp2dIndividualImpl)
-	return i1, i2, pointLeft, pointRight, nil
+	return true
+}
+
+// CopyIndividual returns a copy of individual whose postfix lives in the
+// generation arena (ga copies the slots that crossover skips).
+func (p *Csp2dProblemImpl) CopyIndividual(individual problem.Individual) problem.Individual {
+	return newIndividual(p.arena.GenAlloc(individual.(*Csp2dIndividualImpl).postfix))
+}
+
+// DetachIndividual returns a copy whose postfix lives on the Go heap, outside
+// every arena, so it survives any number of epochs (championship experiment,
+// ga/ga.go). CopyIndividual brings it back into the population.
+func (p *Csp2dProblemImpl) DetachIndividual(individual problem.Individual) problem.Individual {
+	return newIndividual(slices.Clone(individual.(*Csp2dIndividualImpl).postfix))
 }

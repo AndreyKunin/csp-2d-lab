@@ -1,0 +1,63 @@
+# Fast profile for the PR gate: small populations, few epochs.
+# Host and port are overridden by the harness via SERVER_HOST / SERVER_PORT.
+webserver:
+  host: 127.0.0.1
+  port: 8080
+  staticDir: static
+
+defaults:
+  # Each simulation parameter: its default value and its validation rule (a request
+  # with a value outside the rule gets 400). The rule DSL is the UI's
+  # (static/src/utils/parameterDefinitions.ts): <int|float><[|(><min>-<max><]|)>,
+  # [ ] inclusive, ( ) exclusive, an empty bound unbounded: float[0-1], int[2-).
+  # Keep the rules in sync with parameterDefinitions.ts.
+  simulationParameters:
+    populationSize:
+      min:
+        default: 20
+        rule: "int[3-)"
+      max:
+        default: 60
+        rule: "int[3-)"
+    eliteCount:
+      default: 5
+      rule: "int[1-)"
+    mutationRate:
+      default: 0.07
+      rule: "float[0-1]"
+    crossoverRate:
+      default: 0.75
+      rule: "float(0-1]"
+    maxEpochsCount:
+      default: 200
+      rule: "int[1-)"
+    windowSize:
+      default: 10
+      rule: "int[1-1000000]"
+    cycleCount:
+      default: 10
+      rule: "int[1-)"
+    tournamentSize:
+      default: 5
+      rule: "int[2-)"
+    repairWeight:
+      default: 3
+      rule: "int[1-)"
+    flipWeight:
+      default: 1
+      rule: "int[1-)"
+    donorFraction:
+      default: 0.5
+      rule: "float(0-1]"
+
+# Start request limits. The total part count (the sum of the counts) is at most
+# maxPartsCount; 150 for D15, above the production 100.
+# windowSize: up to 10^6 (production 250), for the scenarios that must stay in one
+# cycle (FT-RES-09, FT-STAT-08); FT-PAR-13/14 check the production rule on "defaults".
+inputs:
+  maxPartsCount: 150
+
+# Job housekeeping: small values so FT-RSC-05 / FT-RSC-06 observe them quickly.
+jobs:
+  maxActiveJobs: 8
+  idleTimeout: 10s

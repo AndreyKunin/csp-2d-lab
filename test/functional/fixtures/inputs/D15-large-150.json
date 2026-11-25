@@ -1,0 +1,159 @@
+{
+  "sheets": {
+    "width": 244,
+    "length": 122
+  },
+  "parts": [
+    {
+      "label": "1",
+      "width": 106,
+      "length": 161,
+      "count": 6
+    },
+    {
+      "label": "2",
+      "width": 67,
+      "length": 187,
+      "count": 8
+    },
+    {
+      "label": "3",
+      "width": 102,
+      "length": 75,
+      "count": 9
+    },
+    {
+      "label": "4",
+      "width": 96,
+      "length": 31,
+      "count": 5
+    },
+    {
+      "label": "5",
+      "width": 88,
+      "length": 12,
+      "count": 5
+    },
+    {
+      "label": "6",
+      "width": 17,
+      "length": 95,
+      "count": 6
+    },
+    {
+      "label": "7",
+      "width": 106,
+      "length": 176,
+      "count": 4
+    },
+    {
+      "label": "8",
+      "width": 116,
+      "length": 107,
+      "count": 9
+    },
+    {
+      "label": "9",
+      "width": 65,
+      "length": 98,
+      "count": 6
+    },
+    {
+      "label": "10",
+      "width": 17,
+      "length": 168,
+      "count": 7
+    },
+    {
+      "label": "11",
+      "width": 100,
+      "length": 87,
+      "count": 6
+    },
+    {
+      "label": "12",
+      "width": 86,
+      "length": 124,
+      "count": 7
+    },
+    {
+      "label": "13",
+      "width": 49,
+      "length": 150,
+      "count": 8
+    },
+    {
+      "label": "14",
+      "width": 115,
+      "length": 17,
+      "count": 3
+    },
+    {
+      "label": "15",
+      "width": 112,
+      "length": 120,
+      "count": 10
+    },
+    {
+      "label": "16",
+      "width": 59,
+      "length": 13,
+      "count": 11
+    },
+    {
+      "label": "17",
+      "width": 95,
+      "length": 99,
+      "count": 7
+    },
+    {
+      "label": "18",
+      "width": 88,
+      "length": 109,
+      "count": 4
+    },
+    {
+      "label": "19",
+      "width": 76,
+      "length": 10,
+      "count": 6
+    },
+    {
+      "label": "20",
+      "width": 28,
+      "length": 74,
+      "count": 2
+    },
+    {
+      "label": "21",
+      "width": 41,
+      "length": 137,
+      "count": 3
+    },
+    {
+      "label": "22",
+      "width": 75,
+      "length": 94,
+      "count": 3
+    },
+    {
+      "label": "23",
+      "width": 51,
+      "length": 72,
+      "count": 5
+    },
+    {
+      "label": "24",
+      "width": 97,
+      "length": 160,
+      "count": 6
+    },
+    {
+      "label": "25",
+      "width": 50,
+      "length": 135,
+      "count": 4
+    }
+  ],
+  "sawWidth": 0.3
+}

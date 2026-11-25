@@ -1,0 +1,56 @@
+# Quality profile (nightly, @quality): realistic population, more epochs.
+webserver:
+  host: 127.0.0.1
+  port: 8080
+  staticDir: static
+
+defaults:
+  # Each simulation parameter: its default value and its validation rule (a request
+  # with a value outside the rule gets 400). The rule DSL is the UI's
+  # (static/src/utils/parameterDefinitions.ts): <int|float><[|(><min>-<max><]|)>,
+  # [ ] inclusive, ( ) exclusive, an empty bound unbounded: float[0-1], int[2-).
+  # Keep the rules in sync with parameterDefinitions.ts.
+  simulationParameters:
+    populationSize:
+      min:
+        default: 100
+        rule: "int[3-)"
+      max:
+        default: 1000
+        rule: "int[3-)"
+    eliteCount:
+      default: 10
+      rule: "int[1-)"
+    mutationRate:
+      default: 0.07
+      rule: "float[0-1]"
+    crossoverRate:
+      default: 0.75
+      rule: "float(0-1]"
+    maxEpochsCount:
+      default: 3000
+      rule: "int[1-)"
+    windowSize:
+      default: 50
+      rule: "int[1-250]"
+    cycleCount:
+      default: 10
+      rule: "int[1-)"
+    tournamentSize:
+      default: 5
+      rule: "int[2-)"
+    repairWeight:
+      default: 3
+      rule: "int[1-)"
+    flipWeight:
+      default: 1
+      rule: "int[1-)"
+    donorFraction:
+      default: 0.5
+      rule: "float(0-1]"
+
+# Start request limits. The total part count (the sum of the counts) is at most
+# maxPartsCount; the UI checks the same limit (static/src/utils/model.ts, MAX_TOTAL_COUNT).
+inputs:
+  maxPartsCount: 100
+

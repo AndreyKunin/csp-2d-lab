@@ -1,6 +1,6 @@
 import {InputFormData} from "../components/InputForm";
-import {isNaN} from "mathjs";
 import {getSimulationParameters} from "./parameters";
+import {PARAMETER_DEFINITIONS, validateParameter, valueOf} from "./parameterDefinitions";
 
 interface PopulationSize {
     min: number;
@@ -35,8 +35,8 @@ export interface WindowState {
 export interface SimulationState {
     epochState: EpochState;
     windowState: WindowState;
-    saturatedSince: number;
-    convergedSince: number;
+    cycles: number;            // finished cycles (each ends when the best stagnates for windowSize epochs)
+    championshipSince: number; // epoch the championship began; 0 = not yet
 }
 
 export interface SimulationStatistics {
@@ -49,10 +49,14 @@ export interface SimulationParameters {
     populationSize?: PopulationSize;
     eliteCount?: number;
     mutationRate?: number;
-    maxRate?: number;
-    minRate?: number;
+    crossoverRate?: number;
     maxEpochsCount?: number;
     windowSize?: number;
+    cycleCount?: number;
+    tournamentSize?: number;
+    repairWeight?: number;
+    flipWeight?: number;
+    donorFraction?: number;
 }
 
 export interface SimulationRuntimeParameters {
@@ -60,10 +64,14 @@ export interface SimulationRuntimeParameters {
     populationSize: number;
     eliteCount: number;
     mutationRate: number;
-    maxRate: number;
-    minRate: number;
+    crossoverRate: number;
     maxEpochsCount: number;
     windowSize: number;
+    cycleCount: number;
+    tournamentSize: number;
+    repairWeight: number;
+    flipWeight: number;
+    donorFraction: number;
 }
 
 export class Simulation {
@@ -82,70 +90,37 @@ export class Simulation {
         }
     }
 
+    // validate checks every parameter against its rule (the server's rules, parameterDefinitions.ts),
+    // then the relations between parameters.
     public validate(): string[] {
-        let errors: string[] = [];
-
-        if (!this.initialParameters) {
+        const errors: string[] = [];
+        const p = this.initialParameters;
+        if (!p) {
             return errors;
         }
-
-        this.checkRange(
-            'Minimum population size', 'Maximum population size',
-            errors, 3, Number.MAX_SAFE_INTEGER,
-            this.initialParameters.populationSize?.min, this.initialParameters.populationSize?.max
-        );
-
-        this.checkRange(
-            'Elite count', 'Minimum population size',
-            errors, 1, Number.MAX_SAFE_INTEGER,
-            this.initialParameters.eliteCount, this.initialParameters.populationSize?.min
-        );
-
-        this.checkRate("Mutation rate", errors, this.initialParameters.mutationRate);
-        this.checkRate("Minimum rate", errors, this.initialParameters.minRate);
-        this.checkRate("Maximum rate", errors, this.initialParameters.maxRate);
-
-        this.checkRange(
-            'Window size', 'Number of generations',
-            errors, 1, Number.MAX_SAFE_INTEGER,
-            this.initialParameters.windowSize, this.initialParameters.maxEpochsCount
-        );
-
+        for (const definition of PARAMETER_DEFINITIONS) {
+            const value = valueOf(p, definition.key);
+            if (value === undefined) {
+                continue; // not sent: overridden by the server (overriddenParameters)
+            }
+            const error = validateParameter(definition.key, value === null ? '' : String(value));
+            if (error) {
+                errors.push(error);
+            }
+        }
+        if (errors.length > 0) {
+            return errors;
+        }
+        const minPopulation = p.populationSize?.min, maxPopulation = p.populationSize?.max;
+        if (minPopulation !== undefined && maxPopulation !== undefined && minPopulation > maxPopulation) {
+            errors.push('Minimum population size is greater than Maximum population size.');
+        }
+        if (p.eliteCount !== undefined && minPopulation !== undefined && p.eliteCount > minPopulation) {
+            errors.push('Elite count is greater than Minimum population size.');
+        }
+        if (p.windowSize !== undefined && p.maxEpochsCount !== undefined && p.windowSize > p.maxEpochsCount) {
+            errors.push('Window size is greater than Number of generations.');
+        }
         return errors;
-    }
-
-    private checkRate(name: string, errors: string[], value?: number) {
-        if (value === undefined || isNaN(value)) {
-            errors.push(`Invalid ${name} value.`);
-        } else if (value === 0) {
-            errors.push(`${name} cannot be 0.`);
-        } else if (value >= 1) {
-            errors.push(`${name} must be less than 1.`);
-        }
-    }
-
-    private checkRange(nameLow: string, nameHigh: string, errors: string[], min: number, max: number, valueLow?: number, valueHigh?: number) {
-        let formatValid = true;
-        if (valueLow === undefined || isNaN(valueLow)) {
-            errors.push(`Invalid ${nameLow} value.`);
-            formatValid = false;
-        }
-        if (valueHigh === undefined || isNaN(valueHigh)) {
-            errors.push(`Invalid ${nameHigh} value.`);
-            formatValid = false;
-        }
-        if (!formatValid) {
-            return;
-        }
-
-        if (valueLow !== undefined && valueLow < min) {
-            errors.push(`${nameLow} cannot be less than ${min}.`);
-        }
-        if (valueHigh !== undefined && valueHigh > max) {
-            errors.push(`${nameHigh} cannot be higher than ${max}.`);
-        }
-        if (valueLow !== undefined && valueHigh !== undefined && valueLow > valueHigh) {
-            errors.push(`${nameLow} is greater than ${nameHigh}.`);
-        }
     }
 }

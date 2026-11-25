@@ -67,3 +67,10 @@ static/index.html
 *.secret
 secrets/
 /scripts.txt
+
+# ── Internal ───────────────────────────────────────────────────
+test/experiment/
+CLAUDE.md
+
+# Frontend unit tests: compiled output (cd static && npm test)
+/static/test-build/

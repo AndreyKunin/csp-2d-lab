@@ -2,29 +2,34 @@ import React, {useState, useEffect, useMemo, useRef, useCallback} from 'react';
 import {PropertyGrid} from "../PropertyGrid";
 import {SimulationParameters, SimulationRuntimeParameters} from "../../utils/simulation";
 import {
-    getRuntimeParameters, getSimulationParameters,
+    getRuntimeParameters,
     PropertyItem,
+    submitRuntimeParameters,
     validateSimulationParameters
 } from "../../utils/parameters";
 import {DashboardState} from "../../services/status";
+import {ErrorList} from "../ErrorList";
 
 interface EditDialogProps {
     dashboardState: DashboardState;
     isOpen: boolean;
     onClose: () => void;
-    onSubmit: (parameters: SimulationParameters) => void;
+    // onSubmit configures the job; a rejection (a failed configure) is shown in the dialog.
+    onSubmit: (parameters: SimulationParameters) => Promise<void>;
 }
 
 export const EditDialog: React.FC<EditDialogProps> = ({ dashboardState, isOpen, onClose, onSubmit }) => {
     const [animationStep, setAnimationStep] = useState(0);
     const [simulationParameters, setSimulationParameters] = useState<PropertyItem[]>(getRuntimeParameters(dashboardState.getRuntimeParameters()));
     const simulationParametersValidationErrors = useRef<Map<string, boolean>>(new Map());
+    const [errors, setErrors] = useState<string[]>([]); // why the values were rejected, or why the configure failed
 
     useEffect(() => {
         if (isOpen) {
             // Start animation sequence
             setAnimationStep(1); // dot
             setSimulationParameters(getRuntimeParameters(dashboardState.getRuntimeParameters()));
+            setErrors([]);
             setTimeout(() => setAnimationStep(2), 100); // expand horizontally to line
             setTimeout(() => setAnimationStep(3), 300); // expand vertically to rectangle
         } else {
@@ -34,6 +39,7 @@ export const EditDialog: React.FC<EditDialogProps> = ({ dashboardState, isOpen, 
 
     const handleClear = useCallback(() => {
         setSimulationParameters(getRuntimeParameters(dashboardState.getRuntimeParameters()));
+        setErrors([]);
     }, [dashboardState]);
 
     const handleCancel = useCallback(() => {
@@ -41,15 +47,14 @@ export const EditDialog: React.FC<EditDialogProps> = ({ dashboardState, isOpen, 
         onClose();
     }, [handleClear, onClose]);
 
-    const handleSubmit = (e: React.FormEvent) => {
+    // handleSubmit marks invalid fields red, then validates the values against
+    // their rules and the running job (FE-02) and configures the job; the
+    // messages say why the values were rejected or why the configure failed.
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        const parameterResults = simulationParameters.map((row, i) => {
-            return validateSimulationParameters(false, row.key, row.value, simulationParametersValidationErrors);
-        });
-        const parameterDataValid = parameterResults && parameterResults.every(r => r);
-        if (parameterDataValid) {
-            onSubmit(getSimulationParameters(simulationParameters));
-        }
+        simulationParameters.forEach(row =>
+            validateSimulationParameters(false, row.key, row.value, simulationParametersValidationErrors));
+        setErrors(await submitRuntimeParameters(simulationParameters, dashboardState.getRuntimeParameters(), onSubmit));
     };
 
     const updateSimulationParameters = useCallback((rowIndex: number, value: string) => {
@@ -78,6 +83,7 @@ export const EditDialog: React.FC<EditDialogProps> = ({ dashboardState, isOpen, 
                             validationErrors={simulationParametersValidationErrors.current}
                             update={updateSimulationParameters}
                         />
+                        {errors.length > 0 && <ErrorList errors={errors}/>}
                         <div className="sectionSpacer">&nbsp;</div>
                         <div className="actions">
                             <div onClick={handleClear}>Clear</div>

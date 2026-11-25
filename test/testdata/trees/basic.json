@@ -1,0 +1,16 @@
+[
+  {"name": "leaf", "kerf": 0, "parts": {"1": [40, 30]}, "tree": "1", "long": 40, "short": 30},
+  {"name": "S-no-rotation", "kerf": 0, "parts": {"1": [40, 30], "2": [50, 20]}, "tree": "1 2 S", "long": 90, "short": 30},
+  {"name": "S-rotate-right", "kerf": 0, "parts": {"1": [100, 60], "2": [50, 40]}, "tree": "1 2 S", "long": 140, "short": 60},
+  {"name": "S-rotate-left", "kerf": 0, "parts": {"1": [100, 60], "2": [50, 40]}, "tree": "2 1 S", "long": 140, "short": 60},
+  {"name": "L-basic", "kerf": 0, "parts": {"1": [40, 30], "2": [50, 20]}, "tree": "1 2 L", "long": 50, "short": 50},
+  {"name": "L-kerf", "kerf": 2, "parts": {"1": [40, 30], "2": [50, 20]}, "tree": "1 2 L", "long": 52, "short": 50},
+  {"name": "S-kerf", "kerf": 1, "parts": {"1": [40, 30], "2": [50, 20]}, "tree": "1 2 S", "long": 91, "short": 30},
+  {"name": "S-tie-rotate-right", "kerf": 0, "parts": {"1": [100, 50], "2": [50, 30]}, "tree": "1 2 S", "long": 130, "short": 50},
+  {"name": "S-tie-rotate-left", "kerf": 0, "parts": {"1": [100, 50], "2": [50, 30]}, "tree": "2 1 S", "long": 130, "short": 50},
+  {"name": "S-tie-column", "kerf": 0, "parts": {"1": [60, 50], "2": [50, 40]}, "tree": "1 2 S", "long": 100, "short": 50},
+  {"name": "S-tie-squares", "kerf": 0, "parts": {"1": [50, 50]}, "tree": "1 1 S", "long": 100, "short": 50},
+  {"name": "nested", "kerf": 0, "parts": {"1": [50, 50], "2": [100, 20]}, "tree": "1 1 L 2 S", "long": 200, "short": 50},
+  {"name": "perfect-quad", "kerf": 0, "parts": {"1": [50, 50]}, "tree": "1 1 L 1 1 L L", "long": 100, "short": 100},
+  {"name": "perfect-quad-kerf", "kerf": 2, "parts": {"1": [49, 49]}, "tree": "1 1 L 1 1 L L", "long": 100, "short": 100}
+]

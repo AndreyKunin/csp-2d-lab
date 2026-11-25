@@ -43,11 +43,12 @@ export const LabControlPanel: React.FC<ControlPanelProps> = (
         setEditDialogOpen(true);
     }, []);
 
+    // A failed configure rejects: the dialog shows the error and stays open (FE-02).
     const onEditDialogSubmit = useCallback(async (parameters: SimulationParameters) => {
         await configureSimulation(dashboardState.getSimulationId(), parameters);
         await dashboardState.refresh();
         setEditDialogOpen(false);
-    }, []);
+    }, [dashboardState]);
 
     const onEditDialogCancel = useCallback(() => {
         setEditDialogOpen(false);

@@ -4,7 +4,7 @@ import {RadioGroup} from "./RadioGroup";
 import {FixedGrid} from "./FixedGrid";
 import {Checkbox} from "./Checkbox";
 import {PropertyGrid} from "./PropertyGrid";
-import {getDefaultParameters} from "../services/requests";
+import {getParameterDefinitions} from "../services/requests";
 import {SimulationParameters} from "../utils/simulation";
 import {
     getInitialParameters,
@@ -18,6 +18,7 @@ import LoadFormButton from "./LoadFormButton";
 import SaveFormButton from "./SaveFormButton";
 import {SawWidthOption, SawWidthRadioGroup} from "./SawWidthRadioGroup";
 import {isFraction} from "../utils/numbers";
+import {defaultParameterValues, overriddenParameters, setParameterRules} from "../utils/parameterDefinitions";
 
 
 const enum PartsRowType {
@@ -66,6 +67,33 @@ export const InputForm: React.FC<InputFormProps> = ({isLoading, onSubmit, onErro
     const [useCustomParameters, setUseCustomParameters] = useState<boolean>(false);
     const simulationParametersValidationErrors = useRef<Map<string, boolean>>(new Map());
 
+    // Parameters the server overrides for this number of parts (sum of the
+    // counts) are shown disabled and empty and are not sent; when a change of
+    // the parts releases one, it gets its default back.
+    const partsCount = useMemo(() => partsData.reduce((sum, row) => {
+        const count = Number(row[2]);
+        return sum + (Number.isInteger(count) && count > 0 ? count : 0);
+    }, 0), [partsData]);
+    const overridden = useMemo(() => overriddenParameters(partsCount), [partsCount]);
+    const previousOverridden = useRef<Set<string>>(new Set());
+    useEffect(() => {
+        const released = [...previousOverridden.current].filter(key => !overridden.has(key));
+        previousOverridden.current = overridden;
+        overridden.forEach(key => simulationParametersValidationErrors.current.set(key, false));
+        if (released.length === 0 || !defaultParameters) {
+            return;
+        }
+        const defaults = new Map(getInitialParameters(defaultParameters).map(item => [item.key, item.value]));
+        setSimulationParameters(items => items.map(item =>
+            released.includes(item.key) ? {...item, value: defaults.get(item.key) ?? ''} : item
+        ));
+    }, [overridden, defaultParameters]);
+    const displayedParameters = useMemo(() => simulationParameters.map(item =>
+        overridden.has(item.key) ? {...item, disabled: true} : item
+    ), [simulationParameters, overridden]);
+    const sentParameters = useMemo(() => simulationParameters.filter(item => !overridden.has(item.key)),
+        [simulationParameters, overridden]);
+
     const sawWidthOptions = useMemo(() => [
         {id: "z" , text: "Zero"     , in: "0"   , mm: "0"  },
         {id: "tk", text: "Thin kerf", in: "3/32", mm: "2.4"},
@@ -73,7 +101,11 @@ export const InputForm: React.FC<InputFormProps> = ({isLoading, onSubmit, onErro
     ], []);
 
     useEffect(() => {
-        getDefaultParameters().then(defaultParameters => {
+        // The rules are set before the parameters appear, so every value is
+        // validated with the server's rules.
+        getParameterDefinitions().then((definitions: any) => {
+            setParameterRules(definitions);
+            const defaultParameters = defaultParameterValues(definitions) as SimulationParameters;
             setDefaultParameters(defaultParameters);
             setSimulationParameters(getInitialParameters(defaultParameters));
         });
@@ -247,7 +279,7 @@ export const InputForm: React.FC<InputFormProps> = ({isLoading, onSubmit, onErro
 
         let parameterDataValid = true;
         if (useCustomParameters) {
-            const parameterResults = simulationParameters.map((row) => {
+            const parameterResults = sentParameters.map((row) => {
                 return validateSimulationParameters(false, row.key, row.value, simulationParametersValidationErrors);
             });
             parameterDataValid = parameterResults && parameterResults.every(r => r);
@@ -262,7 +294,7 @@ export const InputForm: React.FC<InputFormProps> = ({isLoading, onSubmit, onErro
             partsData,
             sheetsData: isLimitedSheet ? sheetsData : undefined,
             sawWidth,
-            parameters: useCustomParameters ? simulationParameters : undefined,
+            parameters: useCustomParameters ? sentParameters : undefined,
         };
     };
 
@@ -434,7 +466,7 @@ export const InputForm: React.FC<InputFormProps> = ({isLoading, onSubmit, onErro
                         <div className="sectionSpacer">&nbsp;</div>
                         <PropertyGrid
                             id="s_parameters"
-                            data={simulationParameters}
+                            data={displayedParameters}
                             validationErrors={simulationParametersValidationErrors.current}
                             update={updateSimulationParameters}
                         />
@@ -452,7 +484,7 @@ export const InputForm: React.FC<InputFormProps> = ({isLoading, onSubmit, onErro
                     <SaveFormButton
                         partsData={partsData}
                         sheetsData={sheetsData}
-                        parameters={useCustomParameters ? simulationParameters : undefined}
+                        parameters={useCustomParameters ? sentParameters : undefined}
                         sawWidth={sawWidth}
                         units={unitType}
                         text="Save"

@@ -1,4 +1,5 @@
 import {SimulationParameters, SimulationRuntimeParameters} from "./simulation";
+import {PARAMETER_DEFINITIONS, ParameterDefinition, findParameter, validateParameter, valueOf} from "./parameterDefinitions";
 import {MutableRefObject} from "react";
 import {isFraction} from "./numbers";
 
@@ -8,141 +9,124 @@ export interface PropertyItem {
     displayName: string;
     value: string;
     tooltip?: string;
+    disabled?: boolean; // overridden by the server: shown empty, not editable, not sent
 }
 
 
+function toItems(definitions: ParameterDefinition[], source: object | undefined): PropertyItem[] {
+    return definitions.map((definition, index) => {
+        const value = valueOf(source, definition.key);
+        return {
+            index,
+            key: definition.key,
+            displayName: definition.displayName,
+            value: value === undefined || value === null ? '' : String(value),
+            tooltip: definition.tooltip,
+        };
+    });
+}
+
+// The start form's custom parameters: every defined parameter, valued from the
+// server defaults.
 export function getInitialParameters(defaultParameters: SimulationParameters): PropertyItem[] {
-    const populationSizeTooltip = 'Population size a number of solutions within the population, which is maintained across generations. This value is adaptive and depends on the problem size. However, we set boundaries for minimum and maximum values to reduce compute requirements.';
-    return  [
-        {
-            index: 0, key: 'populationSize.min',
-            displayName: 'Minimum population size',
-            value: defaultParameters.populationSize?.min.toString() || '',
-            tooltip: populationSizeTooltip,
-        },
-        {
-            index: 1, key: 'populationSize.max',
-            displayName: 'Maximum population size',
-            value: defaultParameters.populationSize?.max.toString() || '',
-            tooltip: populationSizeTooltip,
-        },
-        {
-            index: 2, key: 'eliteCount',
-            displayName: 'Elite count',
-            value: defaultParameters.eliteCount?.toString() || '',
-            tooltip: 'The elite size specifies the number of the fittest individuals that are guaranteed to be carried over from one generation to the next without any changes.',
-        },
-        {
-            index: 3, key: 'mutationRate',
-            displayName: 'Mutation rate',
-            value: defaultParameters.mutationRate?.toString() || '',
-            tooltip: 'Mutation rate is the probability that a single element of the solution will be altered during the creation of a new offspring solution.',
-        },
-        {
-            index: 4, key: 'minRate',
-            displayName: 'Minimum rate allowed',
-            value: defaultParameters.minRate?.toString() || '',
-            tooltip: 'Lower bound of the Crossover and Mutation Rate. Some of problems tend to raise the exploitation undefinitely that leads to convergence to local optima. This parameter prevents that.',
-        },
-        {
-            index: 5, key: 'maxRate',
-            displayName: 'Maximum rate allowed',
-            value: defaultParameters.maxRate?.toString() || '',
-            tooltip: 'Upper bound of the Crossover and Mutation Rate. Some of problems tend to raise the exploration undefinitely that leads to random search. This parameter prevents that.',
-        },
-        {
-            index: 6, key: 'maxEpochsCount',
-            displayName: 'Number of generations',
-            value: defaultParameters.maxEpochsCount?.toString() || '',
-            tooltip: 'Maximum nimber of epochs (generations) in the simulation. Simulation is a process that never halts until manually stopped. We can auto-stop the process when it reaches the maximum number of epochs.',
-        },
-        {
-            index: 7, key: 'windowSize',
-            displayName: 'Window size',
-            value: defaultParameters.windowSize?.toString() || '',
-            tooltip: 'Adaptive algorithm uses derivative metrics to adjust parameters. But fitness function is very volatile over time, so we use a sliding average window to make these metrics smooth.',
-        }
-    ];
+    return toItems(PARAMETER_DEFINITIONS, defaultParameters);
 }
 
+// The Lab Edit dialog's parameters: the runtime ones, valued from the running
+// job's parameters.
 export function getRuntimeParameters(runtimeParameters?: SimulationRuntimeParameters): PropertyItem[] {
     if (!runtimeParameters) {
         return [];
     }
-    return  [
-        {
-            index: 0, key: 'eliteCount',
-            displayName: 'Elite count',
-            value: runtimeParameters.eliteCount.toString() || '',
-        },
-        {
-            index: 1, key: 'mutationRate',
-            displayName: 'Mutation rate',
-            value: runtimeParameters.mutationRate.toString() || '',
-        },
-        {
-            index: 2, key: 'minRate',
-            displayName: 'Minimum rate allowed',
-            value: runtimeParameters.minRate.toString() || '',
-        },
-        {
-            index: 3, key: 'maxRate',
-            displayName: 'Maximum rate allowed',
-            value: runtimeParameters.maxRate.toString() || '',
-        },
-        {
-            index: 4, key: 'maxEpochsCount',
-            displayName: 'Number of generations',
-            value: runtimeParameters.maxEpochsCount.toString() || '',
-        },
-        {
-            index: 5, key: 'windowSize',
-            displayName: 'Window size',
-            value: runtimeParameters.windowSize.toString() || '',
+    return toItems(PARAMETER_DEFINITIONS.filter(d => d.runtime), runtimeParameters);
+}
+
+// getSimulationParameters builds the request parameters from the items: every
+// item becomes a number; a dotted key becomes a nested field.
+export function getSimulationParameters(items: PropertyItem[]): SimulationParameters {
+    const parameters: Record<string, unknown> = {};
+    for (const item of items) {
+        const path = item.key.split('.');
+        let target = parameters;
+        for (const part of path.slice(0, -1)) {
+            if (typeof target[part] !== 'object' || target[part] === null) {
+                target[part] = {};
+            }
+            target = target[part] as Record<string, unknown>;
         }
-    ];
-}
-
-export function getSimulationParameters(items: PropertyItem[]) {
-    const propertyMap = new Map(
-        items.map(item => [item.key, item.value])
-    );
-    const parameters: SimulationParameters = {
-        eliteCount: Number(propertyMap.get('eliteCount')),
-        mutationRate: Number(propertyMap.get('mutationRate')),
-        minRate: Number(propertyMap.get('minRate')),
-        maxRate: Number(propertyMap.get('maxRate')),
-        maxEpochsCount: Number(propertyMap.get('maxEpochsCount')),
-        windowSize: Number(propertyMap.get('windowSize')),
-    };
-    if (propertyMap.has('populationSize.min')) {
-        parameters.populationSize = {
-            min: Number(propertyMap.get('populationSize.min')),
-            max: Number(propertyMap.get('populationSize.max'))
-        };
+        target[path[path.length - 1]] = Number(item.value);
     }
-    return parameters;
+    return parameters as SimulationParameters;
 }
 
+// validateRuntimeParameters checks the Edit dialog's values: every value against
+// its rule, then (when all are valid) against the running job, whose population
+// size and window size the dialog cannot change: the elite count is below the
+// population size (the server's rule, ValidateBuiltParameters), and the number of
+// generations is at least the window size (as the start form checks). It returns
+// the messages for the user, none when the values are valid (FE-02).
+export function validateRuntimeParameters(items: PropertyItem[], running?: SimulationRuntimeParameters): string[] {
+    const messages: string[] = [];
+    for (const item of items) {
+        const error = validateParameter(item.key, item.value);
+        if (error) {
+            messages.push(error);
+        }
+    }
+    if (messages.length > 0 || !running) {
+        return messages;
+    }
+    const value = (key: string) => {
+        const item = items.find(i => i.key === key);
+        return item ? Number(item.value) : undefined;
+    };
+    const eliteCount = value('eliteCount');
+    if (eliteCount !== undefined && eliteCount >= running.populationSize) {
+        messages.push(`Elite count must be less than the population size (${running.populationSize}).`);
+    }
+    const maxEpochsCount = value('maxEpochsCount');
+    if (maxEpochsCount !== undefined && maxEpochsCount < running.windowSize) {
+        messages.push(`Number of generations must be at least the window size (${running.windowSize}).`);
+    }
+    return messages;
+}
+
+// submitRuntimeParameters validates the Edit dialog's values and, when they are
+// valid, submits them (configure). It returns the messages to show: the
+// validation errors, or the error of the submit; none when it succeeded.
+export async function submitRuntimeParameters(
+    items: PropertyItem[], running: SimulationRuntimeParameters | undefined,
+    submit: (parameters: SimulationParameters) => Promise<void>
+): Promise<string[]> {
+    const messages = validateRuntimeParameters(items, running);
+    if (messages.length > 0) {
+        return messages;
+    }
+    try {
+        await submit(getSimulationParameters(items));
+        return [];
+    } catch (error) {
+        return [error instanceof Error ? error.message : String(error)];
+    }
+}
+
+// validateSimulationParameters checks one parameter value against its rule
+// (the server's rules, parameterDefinitions.ts) and records the result for the grid. allowEmpty
+// accepts an empty value (while the user types); a submit passes false.
 export function validateSimulationParameters(
     allowEmpty: boolean, key: string, value: string, errorsRef: MutableRefObject<Map<string, boolean>>
 ) {
-    if (!allowEmpty && !value) {
-        setPropertyInvalid(key, true, errorsRef);
-        return false;
-    }
-    let valid = false;
-    if (key.includes('Size') || key.includes('Count')) {
-        valid = validateCount(value);
-    } else if (key.includes('Rate') || key.includes('Delta') || key.includes('Probability')) {
-        valid = validateDecimal(value);
-    }
-
-    if (!valid) {
-        setPropertyInvalid(key, true, errorsRef);
+    let valid: boolean;
+    if (!value) {
+        valid = allowEmpty;
     } else {
-        setPropertyInvalid(key, false, errorsRef);
+        const error = validateParameter(key, value);
+        if (error && !findParameter(key)) {
+            console.error(error); // a parameter without a definition: a programming error
+        }
+        valid = error === null;
     }
+    setPropertyInvalid(key, !valid, errorsRef);
     return valid;
 }
 
@@ -165,11 +149,6 @@ export function validateCount (value: string): boolean {
 
 export function validateInteger (value: string): boolean {
     const pattern = /^(\d+)$/;
-    return pattern.test(value.trim());
-}
-
-export function validateDecimal (value: string): boolean {
-    const pattern = /^(\.?[0-9]+|[0-9]+\.?[0-9]+|[0-9]+)$/;
     return pattern.test(value.trim());
 }
 

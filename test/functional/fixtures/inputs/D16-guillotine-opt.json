@@ -1,0 +1,51 @@
+{
+  "sheets": {
+    "width": 100,
+    "length": 100
+  },
+  "parts": [
+    {
+      "label": "1",
+      "width": 50,
+      "length": 60,
+      "count": 1
+    },
+    {
+      "label": "2",
+      "width": 50,
+      "length": 40,
+      "count": 1
+    },
+    {
+      "label": "3",
+      "width": 50,
+      "length": 50,
+      "count": 1
+    },
+    {
+      "label": "4",
+      "width": 25,
+      "length": 50,
+      "count": 2
+    },
+    {
+      "label": "5",
+      "width": 100,
+      "length": 40,
+      "count": 1
+    },
+    {
+      "label": "6",
+      "width": 100,
+      "length": 30,
+      "count": 1
+    },
+    {
+      "label": "7",
+      "width": 50,
+      "length": 30,
+      "count": 2
+    }
+  ],
+  "sawWidth": 0
+}

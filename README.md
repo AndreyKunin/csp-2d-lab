@@ -18,12 +18,12 @@ As this problem is NP-hard, it is practical to find a near-optimal solution usin
 is discrete, and its solution space is not allowed to get gradient, this problem is solved by the multi-epoch simulation 
 known as Genetic Algorithms (GA).
 
-This tool is my attempt to bundle my experiments with adaptive GA and my lab software to something useful. I used 
+This tool is my attempt to bundle my experiments with GA and my lab software to something useful. I used 
 CSP-2D problem as close to my needs in a workshop while I cut plywood sheets.
 
 It can be used 
 1. Directly, to find the best sheet layouts
-2. To experiment with GA adaptation using the bundled Lab UI and using CSP-2D as a sample problem.
+2. To experiment with GA parameters using the bundled Lab UI and using CSP-2D as a sample problem.
 
 ---
 
@@ -74,13 +74,14 @@ Docker image is nowhere, needs to be built from the sources.
 
 Once you start the standalone executable file, it will try to open your browser automatically with the server URL. 
 You need to give permission to do this operation if the operating system asks you. Or you can run the browser manually 
-and connect to http://localhost:8080. The server part can be managed from the tray icon.
+and connect to http://127.0.0.1:8080. The server part can be managed from the tray icon.
 
 ![tray.jpg](docs/screenshots/tray.jpg)
 
 **Note:** If you run several standalone instances simultaneously each of them will run on a different port (the first 
 unused port it found starting from 8080). So it is better if the application opens the browser with the port it already
-knows.
+knows. The standalone server accepts connections from your computer only, other computers in the network cannot connect 
+to it.
 
 ---
 
@@ -91,7 +92,8 @@ Once the browser opens the application, the input form looks like this:
 ![initial.jpg](docs/screenshots/initial.jpg)
 
 - **Parts:** Parts to be cut out of the stock. You specify the width, length, and count of items. For numbers, you can 
-  use either a decimal point format (like `1.25`) or fractions (like `1 1/4`).
+  use either a decimal point format (like `1.25`) or fractions (like `1 1/4`). The total count of parts must be from 4 
+  to 100. Fewer parts have too few different layouts for the GA, and the GA is tested on problems up to 100 parts.
 - **Sheets:** The unconstrained problem means the sheet is unlimited. In this case the simulation finds the optimal 
   layout with minimal circumscribed rectangle. The constrained problem is 2-criteria optimization. It finds the layout 
   with a minimum number of sheets and minimum total area of circumscribed rectangles from every sheet. For a constrained
@@ -100,11 +102,42 @@ Once the browser opens the application, the input form looks like this:
 - **Saw width:** In real world the cutter has its own non-zero width. In the case of scissors, it actually can be zero.
   Saw blade can be full/thin kerf (standard) or something uneven/custom. You can select or enter the value directly.
 - **Units:** Both metric and imperial units are supported. They do not affect calculations and are only used in the output.
-- **Parameters:** These parameters do not belong to the problem itself. They are used to initially adjust the GA.
+- **Parameters:** These parameters do not belong to the problem itself. They are used to initially adjust the GA. 
+  The default values are chosen by measurements, so you need to check the "Use custom simulation parameters (advanced)" box only if you 
+  want to change them.
 
 ![initial.jpg](docs/screenshots/initial-params.jpg)
 
 You can click on the **[?]** icon to get the explanation about every parameter.
+- **Minimum/maximum population size:** Population is the number of solutions in every generation. It is calculated 
+  from the problem size (the number of parts squared), and these boundaries limit it. For small problems (4 to 10 parts) 
+  the minimum population size and the elite count are set automatically, and these fields are disabled.
+- **Elite count:** Number of the best solutions that are carried over to the next generation without any changes.
+- **Mutation rate:** The probability that a single element of a solution is changed when a new solution (offspring) 
+  is created. Mutation tries the smart changes first (repair and flip, see below) and then the random ones.
+- **Crossover rate:** Share of the new solutions made by crossover of two parents, greater than 0 and at most 1. The 
+  rest are copies of the selected parents, changed by mutation only.
+- **Number of generations:** Upper boundary of the generations. Simulation stops when it reaches this number. Usually 
+  it stops much earlier.
+- **Window size:** Number of generations without improvement of the best solution that ends a cycle (see below). It is 
+  also the number of the last generations the window metrics are averaged over. From 1 to 250.
+- **Cycles before championship:** How many cycles run before the championship (see below).
+- **Tournament size:** To select a parent, the GA draws this many solutions at random and takes the best of them. 
+  Larger values favour the best solutions more strongly. A whole number, 2 or more.
+- **Repair weight:** The cost of one successful repair in the mutation budget. Repair empties the worst filled sheet and 
+  packs its parts again. Larger values mean fewer repairs per generation.
+- **Flip weight:** The cost of one successful flip in the mutation budget. Flip changes the direction of the cut that 
+  wastes the most area. Larger values mean fewer flips per generation.
+- **Donor fraction:** The largest part of a parent that crossover copies into a child, as a share of the parts: greater 
+  than 0 and at most 1.
+
+**How the simulation runs.** The GA does not run as a single long search. It runs in cycles. A cycle ends when the best 
+solution has not improved for the number of generations set by the window size. Then the best solutions (the elite) of 
+this cycle are kept aside, and the simulation starts over from new random solutions. After the configured number of 
+cycles, the kept elites of all cycles compete together with random solutions in the final championship. The simulation 
+ends when the championship stops improving too, or when it reaches the number of generations.
+
+If you check the custom parameters box, the simulation starts in the Lab mode (see below).
 - **[Save] button:** You can save the current problem definition and GA parameters to the file.
 - **[Load] button:** Is used to fill the form from the previously created file. A file has a text format:
 
@@ -117,9 +150,30 @@ Parts
 22.5;34.75;1
 15.5;91.75;7
 15.5;79.25;1
+
+SawWidth
+1/8
+
+Units
+in
+
+Parameters
+populationSize.min: 100
+populationSize.max: 60000
+eliteCount: 3
+mutationRate: 0.07
+crossoverRate: 0.75
+maxEpochsCount: 20000
+windowSize: 50
+cycleCount: 10
+tournamentSize: 5
+repairWeight: 3
+flipWeight: 1
+donorFraction: 0.5
 ```
 Where sheets constraint is semicolon-separated `width;length`, parts is semicolon-separated `width;length;count`. 
-Parameters are also supported.
+Saw width, units and parameters are optional. Without the `Sheets` section the sheet is unlimited. With the `Parameters` 
+section the custom parameters box is checked.
 
 - **[Clear] button:** Flushes the form.
 - **[Submit] button:** Starts simulation. You can start and monitor several simulations simultaneously from different 
@@ -153,31 +207,33 @@ The **Control panel** and **Best solution panel** are the same. The **Indicator 
 - **Generation #:** How many epochs (generation) passed so far.
 - **Generations:** Upper boundary of the generations. Simulation stops when the upper boundary reaches. Usually it stops 
   much earlier.
-- **Min/max rates:** The boundaries of the crossover and mutation rates. The adaptive GA adjusts these rates in 
-  real-time based on the metrics at the every epoch. Boundaries prevent the algorithm from collapsing to 100% 
-  exploration or 100% exploitation.
+- **Restarts:** How many cycles ended so far, each time the simulation started over from new random solutions.
+
+The **Run time parameters panel** displays the parameters the simulation currently uses:
 - **Mutation rate:** Mutation rate is a parameter that controls the frequency of mutation in the population. 
 - **Elite count:** Number of the protected (elite) species in every generation. 
-- **Window size:** As runtime metrics are highly volatile, we average them over a window of the last N generations. 
-  Adaptive GA makes decisions based on the averaged values to do not overreact on random spikes.
+- **Window size:** Number of generations without improvement that ends a cycle. As runtime metrics are highly volatile, 
+  the window charts also average them over the last N generations.
 - **Population:** Number of species in every generation. This is a calculated value based on the problem size. But you 
   can set up boundaries for this value in the parameters.
 
 Metrics that we display in the lab:
 
 - **Sheets and area over time:** Two fitness metrics, not combined to a single value, displayed separately here.
-- **Single generation and window metrics:** Two metrics charts, instantaneous and averaged over the window. They show:
-    - **Best solution fitness:** $f_{best}$ Combined fitness value, same as we display in the Monitoring mode chart.
+- **Generation state and Window state:** Two metrics charts, instantaneous and averaged over the window. They show:
+    - **Best solution fitness:** $f_{best}$ Combined fitness value, same as we display in the Monitoring mode chart. 
+      Only the Generation state chart shows it.
     - **Average fitness over the population:** $\overline{f}$ Combined fitness value, averaged over a whole population.
     - **Standard deviation of $\overline{f}$:** Standard deviation of the fitness value in a whole population.
     - **Average fitness over the elite:** $\overline{f_{elite}}$ Combined fitness value, averaged over the elite.
-    - **Standard deviation of $\overline{f_{elite}}$:** Standard deviation of the fitness value in the elite. The 
-      algorithm stops when this value averages to zero over the window. This situation means that simulation converged 
-      to a minimum and unable to leave that dip. Further processing does not make sense in this case. This minimum can 
-      be either local or a global minimum.
-- **Saturation rate:** GA considers saturated if a crossover operation is unable to produce unique species as offspring.
-  In this case GA raises the exploration by introducing a new random migrant instead of the crossover's offspring. This
-  chart shows the percent rate of migrants over the whole population. Usually it is less than 1%.
+    - **Standard deviation of $\overline{f_{elite}}$:** Standard deviation of the fitness value in the elite. When 
+      this value drops to zero, all elite solutions have the same fitness. This situation means that simulation 
+      converged to a minimum, which can be either local or a global minimum. If the best solution stops improving, the 
+      cycle ends, and the simulation starts over.
+- **Saturation rate:** GA considers saturated if crossover or mutation is unable to produce a unique species as 
+  offspring. In this case GA raises the exploration by introducing a new random migrant instead of that offspring. This
+  chart shows the share of migrants in the population per generation, averaged over the window. The share is not in 
+  percent: 0.01 means 1%.
 - **Solutions spread** is the same as in the Monitoring mode chart.
 
 Lab control panel shows a toggle "how many points to display in the chart" (pure display function, it won't affect any 
@@ -191,8 +247,13 @@ Then, the **[Edit]** button enables. Clicking that, the parameter dialog appears
 
 ![lab-edit-dialog.jpg](docs/screenshots/lab-edit-dialog.jpg)
 
-Same control parameters that are in the input form. You can adjust them and look how it changes the metrics and the 
-overall convergence of the GA.
+Same control parameters that are in the input form, except the population size and the window size. They are set 
+only once, at the start. You can adjust the parameters and look how it changes the metrics and the overall convergence 
+of the GA. Then press **[Submit]** and resume the simulation with the play button.
+
+The dialog checks the values before submitting. The elite count must be less than the population, and the number of 
+generations must not be less than the window size. If something is wrong, the dialog marks the wrong fields and lists 
+the reasons.
 
 When simulation ends by itself, or you press **[Stop]** on the control panel, the results display. Usually it is the 
 single best solution. We consider two solutions with the same fitness criteria values as the same solution. So we choose the 

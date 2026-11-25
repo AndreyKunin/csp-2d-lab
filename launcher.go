@@ -9,9 +9,14 @@ import (
 	"time"
 )
 
-func findFreePort(startPort int) (int, net.Listener, error) {
+// getFreeSocket returns a listener on the first free port of [startPort,
+// startPort+100) on the loopback interface only: the desktop app's API has no
+// authentication, so it must not be reachable from the network (SEC-01). A
+// ":port" listener took every interface, and on Windows it could share a port
+// another process already listened on at 127.0.0.1.
+func getFreeSocket(startPort int) (int, net.Listener, error) {
 	for port := startPort; port < startPort+100; port++ {
-		addr := fmt.Sprintf(":%d", port)
+		addr := fmt.Sprintf("127.0.0.1:%d", port)
 		ln, err := net.Listen("tcp", addr)
 		if err == nil {
 			return port, ln, nil
@@ -22,7 +27,7 @@ func findFreePort(startPort int) (int, net.Listener, error) {
 
 func waitForServer(port int, timeout time.Duration) bool {
 	deadline := time.Now().Add(timeout)
-	url := fmt.Sprintf("http://localhost:%d/heartbeat", port)
+	url := fmt.Sprintf("http://127.0.0.1:%d/api/service/v1/healthz", port)
 	for time.Now().Before(deadline) {
 		resp, err := http.Get(url)
 		if err == nil {

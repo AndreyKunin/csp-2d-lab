@@ -24,7 +24,7 @@ type WebApp struct {
 func StartWebApp(configuration *Configuration, ctx context.Context) {
 	webApp := WebApp{
 		Configuration:     *configuration,
-		SimulationManager: ga.NewSimulationManager(),
+		SimulationManager: ga.NewSimulationManagerWithLimits(ctx, configuration.Limits()),
 	}
 
 	e := echo.New()

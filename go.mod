@@ -4,7 +4,11 @@ go 1.26.1
 
 require (
 	github.com/cucumber/godog v0.15.1
+	github.com/getlantern/systray v1.2.2
+	github.com/johnfercher/maroto/v2 v2.4.0
 	github.com/labstack/echo/v4 v4.13.4
+	github.com/pdfcpu/pdfcpu v0.11.1
+	github.com/spf13/pflag v1.0.7
 	gopkg.in/yaml.v2 v2.4.0
 )
 
@@ -20,7 +24,6 @@ require (
 	github.com/getlantern/hex v0.0.0-20190417191902-c6586a6fe0b7 // indirect
 	github.com/getlantern/hidden v0.0.0-20190325191715-f02dbb02be55 // indirect
 	github.com/getlantern/ops v0.0.0-20190325191751-d70cb0d6f85f // indirect
-	github.com/getlantern/systray v1.2.2 // indirect
 	github.com/go-stack/stack v1.8.0 // indirect
 	github.com/gofrs/uuid v4.3.1+incompatible // indirect
 	github.com/google/uuid v1.6.0 // indirect
@@ -31,13 +34,10 @@ require (
 	github.com/hhrutter/pkcs7 v0.2.0 // indirect
 	github.com/hhrutter/tiff v1.0.2 // indirect
 	github.com/johnfercher/go-tree v1.1.0 // indirect
-	github.com/johnfercher/maroto/v2 v2.4.0 // indirect
 	github.com/mattn/go-runewidth v0.0.21 // indirect
 	github.com/oxtoacart/bpool v0.0.0-20190530202638-03653db5a59c // indirect
-	github.com/pdfcpu/pdfcpu v0.11.1 // indirect
 	github.com/phpdave11/gofpdf v1.4.3 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/spf13/pflag v1.0.7 // indirect
 	golang.org/x/image v0.37.0 // indirect
 )
 
@@ -50,6 +50,6 @@ require (
 	github.com/valyala/fasttemplate v1.2.2 // indirect
 	golang.org/x/crypto v0.49.0 // indirect
 	golang.org/x/net v0.51.0 // indirect
-	golang.org/x/sys v0.46.0 // indirect
+	golang.org/x/sys v0.46.0
 	golang.org/x/text v0.35.0 // indirect
 )

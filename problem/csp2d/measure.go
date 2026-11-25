@@ -14,14 +14,14 @@ type MeteredNode struct {
 	measurements Metrics
 }
 
-func (mn *MeteredNode) leafIDs() []int {
-	var result []int
+// appendLeafIDs appends the node's part ids to dst.
+func (mn *MeteredNode) appendLeafIDs(dst []int) []int {
 	for _, id := range mn.postfix {
 		if id >= 0 {
-			result = append(result, id)
+			dst = append(dst, id)
 		}
 	}
-	return result
+	return dst
 }
 
 func (mn *MeteredNode) itemArea(inputs []InputDefinition) float64 {

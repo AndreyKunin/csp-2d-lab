@@ -2,7 +2,7 @@ import {RectNode} from './rect';
 import * as math from 'mathjs';
 import {Fraction} from "mathjs";
 
-interface RectView {
+export interface RectView {
     x: number;
     y: number;
     w: number;
@@ -10,7 +10,7 @@ interface RectView {
     slice: Slice;
 }
 
-interface Slice {
+export interface Slice {
     x: number;
     y: number;
     direction: string;
@@ -34,8 +34,15 @@ export class Layout {
 
     constructor(canvas: HTMLCanvasElement, units: string, sheetWidth?: number, sheetLength?: number) {
         this.canvas = canvas;
-        this.sheetWidth = sheetWidth;
-        this.sheetLength = sheetLength;
+        // The layout is drawn with the long side horizontal (computeLayout), so the
+        // sheet is long side x short side, whichever way it was entered.
+        if (sheetWidth !== undefined && sheetLength !== undefined) {
+            this.sheetWidth = Math.max(sheetWidth, sheetLength);
+            this.sheetLength = Math.min(sheetWidth, sheetLength);
+        } else {
+            this.sheetWidth = sheetWidth;
+            this.sheetLength = sheetLength;
+        }
         this.units = units;
         this.font = 'blueprint';
         this.fontSize = 16;
@@ -61,113 +68,10 @@ export class Layout {
         const scale = this.rescale(rect); // model-units -> pixels factor
         ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
-        this.sliceRects = []; // faux/waste + operation rects (dashed)
-        this.partRects = []; // real parts (solid)
-        const stack: Slice[] = [];
-
-        // Root starts at (SHIFT, SHIFT) with horizontal orientation.
-        stack.push(this.createSlice(this.SHIFT, this.SHIFT, 'H', rect));
-
-        while (stack.length > 0) {
-            const slice = stack.pop();
-            if (!slice) break;
-
-            // Node size in pixels. NOTE: getHeight()=smaller dim, getWidth()=larger dimension.
-            const heightPx = slice.rect.getHeight() * scale;
-            const widthPx = slice.rect.getWidth() * scale;
-            const isVertical = slice.direction === 'V';
-
-            if (slice.rect.isOperation) {
-                let x0: number, y0: number, d1: string, d2: string;
-                let sliceOnScreenWidthPx = isVertical ? heightPx : widthPx;
-                let sliceOnScreenHeightPx = isVertical ? widthPx : heightPx;
-                // Left child's dimensions in px, used as the offset to place the right child.
-                const leftChildHeightPx = slice.rect.left!.getHeight() * scale;
-                const leftChildWidthPx = slice.rect.left!.getWidth() * scale;
-
-                const gap = slice.rect.getGap();
-                const gapPx = gap * scale; // gap size in pixels
-
-
-                if (slice.rect.isLongSlice()) {
-                    // Do children keep the parent's orientation, or are they rotated?
-                    const sameDirection = math.equal(slice.rect.width, math.max(slice.rect.left!.width, slice.rect.right!.width));
-                    d1 = d2 = sameDirection ? slice.direction : slice.getOppositeDirection();
-
-                    // Compute the right child's top-left. The offset (leftChildHeightPx)
-                    // is exactly where the gap should be inserted.
-                    if (isVertical) {
-                        if (sameDirection) {
-                            x0 = slice.x + leftChildHeightPx + gapPx;
-                            y0 = slice.y;
-                        } else {
-                            x0 = slice.x;
-                            y0 = slice.y + leftChildHeightPx + gapPx;
-                        }
-                    } else {
-                        if (sameDirection) {
-                            x0 = slice.x;
-                            y0 = slice.y + leftChildHeightPx + gapPx;
-                        } else {
-                            x0 = slice.x + leftChildHeightPx + gapPx;
-                            y0 = slice.y;
-                        }
-                    }
-                } else if (slice.rect.isShortSlice()) {
-                    // Short slice may flip one child so touching edges match.
-                    const widthIfLeftFlipped = math.add(math.add(slice.rect.left!.height, slice.rect.right!.width), gap);
-                    const widthIfRightFlipped = math.add(math.add(slice.rect.left!.width, slice.rect.right!.height), gap);
-                    const cannotLeftFlip = math.larger(slice.rect.left!.width, slice.rect.height);
-                    const cannotRightFlip = math.larger(slice.rect.right!.width, slice.rect.height);
-                    const leftChildFlipped = math.equal(slice.rect.width, widthIfLeftFlipped) && !cannotLeftFlip;
-                    const rightChildFlipped = math.equal(slice.rect.width, widthIfRightFlipped) && !cannotRightFlip;
-                    d1 = leftChildFlipped ? slice.getOppositeDirection() : slice.direction;
-                    d2 = rightChildFlipped ? slice.getOppositeDirection() : slice.direction;
-
-                    if (isVertical) {
-                        if (leftChildFlipped) {
-                            x0 = slice.x;
-                            y0 = slice.y + leftChildHeightPx + gapPx;
-                        } else {
-                            x0 = slice.x;
-                            y0 = slice.y + leftChildWidthPx + gapPx;
-                        }
-                    } else {
-                        if (leftChildFlipped) {
-                            x0 = slice.x + leftChildHeightPx + gapPx;
-                            y0 = slice.y;
-                        } else {
-                            x0 = slice.x + leftChildWidthPx + gapPx;
-                            y0 = slice.y;
-                        }
-                    }
-                } else {
-                    // Default case
-                    x0 = slice.x;
-                    y0 = slice.y;
-                    d1 = d2 = slice.direction;
-                }
-
-                // Operation node itself is recorded as a slice rect (its bounding box).
-                const rectView = this.createRectView(slice.x, slice.y, sliceOnScreenWidthPx, sliceOnScreenHeightPx, slice);
-                this.sliceRects.push(rectView);
-
-                // Push children. Left keeps the parent's origin; right is offset by x0/y0.
-                stack.push(this.createSlice(x0, y0, d2, slice.rect.right!));
-                stack.push(this.createSlice(slice.x, slice.y, d1, slice.rect.left!));
-            } else {
-                // Leaf: real part or faux waste.
-                const rectView = isVertical
-                    ? this.createRectView(slice.x, slice.y, heightPx, widthPx, slice)
-                    : this.createRectView(slice.x, slice.y, widthPx, heightPx, slice);
-
-                if (slice.rect.isFaux) {
-                    this.sliceRects.push(rectView);
-                } else {
-                    this.partRects.push(rectView);
-                }
-            }
-        }
+        // Place every node (pure geometry, computeLayout), then draw.
+        const placed = computeLayout(rect, scale, this.SHIFT, this.SHIFT);
+        this.sliceRects = placed.sliceRects; // faux/waste + operation rects (dashed)
+        this.partRects = placed.partRects; // real parts (solid)
 
         // Draw faux/slice rects (dashed), then parts (solid), then labels/sizes.
         this.sliceRects.forEach(r => {
@@ -255,20 +159,6 @@ export class Layout {
         ctx.stroke();
     }
 
-    private createRectView(x: number, y: number, w: number, h: number, slice: Slice): RectView {
-        return { x, y, w, h, slice };
-    }
-
-    private createSlice(x: number, y: number, direction: string, rect: RectNode): Slice {
-        return {
-            x,
-            y,
-            direction,
-            rect,
-            getOppositeDirection: () => direction === 'H' ? 'V' : 'H'
-        };
-    }
-
     private scaleCanvas(canvas: HTMLCanvasElement, direction: string, newValue: number): void {
         if (direction === 'h') {
             canvas.height = newValue;
@@ -276,6 +166,141 @@ export class Layout {
             canvas.width = newValue;
         }
     }
+}
+
+/**
+ * computeLayout places every node of a sheet's tree (getTree, rect.ts): the
+ * operation and faux (waste) rects and the parts, in pixels (scale model units
+ * per pixel), the root's top-left at (originX, originY), its long side
+ * horizontal. It reproduces the server's joins (reduce in
+ * problem/csp2d/problem.go): which child of an L join is rotated, which child of
+ * an S join is flipped, where the saw gap goes. Pure: the frontend tests check
+ * it against layouts the server decoded (static/test/forests.test.ts).
+ */
+export function computeLayout(rect: RectNode, scale: number, originX: number, originY: number): { sliceRects: RectView[], partRects: RectView[] } {
+    const sliceRects: RectView[] = []; // faux/waste + operation rects
+    const partRects: RectView[] = []; // real parts
+    const stack: Slice[] = [];
+
+    // Root starts at (originX, originY) with horizontal orientation.
+    stack.push(createSlice(originX, originY, 'H', rect));
+
+    while (stack.length > 0) {
+        const slice = stack.pop();
+        if (!slice) break;
+
+        // Node size in pixels. NOTE: getHeight()=smaller dim, getWidth()=larger dimension.
+        const heightPx = slice.rect.getHeight() * scale;
+        const widthPx = slice.rect.getWidth() * scale;
+        const isVertical = slice.direction === 'V';
+
+        if (slice.rect.isOperation) {
+            let x0: number, y0: number, d1: string, d2: string;
+            let sliceOnScreenWidthPx = isVertical ? heightPx : widthPx;
+            let sliceOnScreenHeightPx = isVertical ? widthPx : heightPx;
+            // Left child's dimensions in px, used as the offset to place the right child.
+            const leftChildHeightPx = slice.rect.left!.getHeight() * scale;
+            const leftChildWidthPx = slice.rect.left!.getWidth() * scale;
+
+            const gap = slice.rect.getGap();
+            const gapPx = gap * scale; // gap size in pixels
+
+
+            if (slice.rect.isLongSlice()) {
+                // Do children keep the parent's orientation, or are they rotated?
+                const sameDirection = math.equal(slice.rect.width, math.max(slice.rect.left!.width, slice.rect.right!.width));
+                d1 = d2 = sameDirection ? slice.direction : slice.getOppositeDirection();
+
+                // Compute the right child's top-left. The offset (leftChildHeightPx)
+                // is exactly where the gap should be inserted.
+                if (isVertical) {
+                    if (sameDirection) {
+                        x0 = slice.x + leftChildHeightPx + gapPx;
+                        y0 = slice.y;
+                    } else {
+                        x0 = slice.x;
+                        y0 = slice.y + leftChildHeightPx + gapPx;
+                    }
+                } else {
+                    if (sameDirection) {
+                        x0 = slice.x;
+                        y0 = slice.y + leftChildHeightPx + gapPx;
+                    } else {
+                        x0 = slice.x + leftChildHeightPx + gapPx;
+                        y0 = slice.y;
+                    }
+                }
+            } else if (slice.rect.isShortSlice()) {
+                // Short slice may flip one child so touching edges match.
+                const widthIfLeftFlipped = math.add(math.add(slice.rect.left!.height, slice.rect.right!.width), gap);
+                const widthIfRightFlipped = math.add(math.add(slice.rect.left!.width, slice.rect.right!.height), gap);
+                const cannotLeftFlip = math.larger(slice.rect.left!.width, slice.rect.height);
+                const cannotRightFlip = math.larger(slice.rect.right!.width, slice.rect.height);
+                const leftChildFlipped = math.equal(slice.rect.width, widthIfLeftFlipped) && !cannotLeftFlip;
+                const rightChildFlipped = math.equal(slice.rect.width, widthIfRightFlipped) && !cannotRightFlip;
+                d1 = leftChildFlipped ? slice.getOppositeDirection() : slice.direction;
+                d2 = rightChildFlipped ? slice.getOppositeDirection() : slice.direction;
+
+                if (isVertical) {
+                    if (leftChildFlipped) {
+                        x0 = slice.x;
+                        y0 = slice.y + leftChildHeightPx + gapPx;
+                    } else {
+                        x0 = slice.x;
+                        y0 = slice.y + leftChildWidthPx + gapPx;
+                    }
+                } else {
+                    if (leftChildFlipped) {
+                        x0 = slice.x + leftChildHeightPx + gapPx;
+                        y0 = slice.y;
+                    } else {
+                        x0 = slice.x + leftChildWidthPx + gapPx;
+                        y0 = slice.y;
+                    }
+                }
+            } else {
+                // Default case
+                x0 = slice.x;
+                y0 = slice.y;
+                d1 = d2 = slice.direction;
+            }
+
+            // Operation node itself is recorded as a slice rect (its bounding box).
+            const rectView = createRectView(slice.x, slice.y, sliceOnScreenWidthPx, sliceOnScreenHeightPx, slice);
+            sliceRects.push(rectView);
+
+            // Push children. Left keeps the parent's origin; right is offset by x0/y0.
+            stack.push(createSlice(x0, y0, d2, slice.rect.right!));
+            stack.push(createSlice(slice.x, slice.y, d1, slice.rect.left!));
+        } else {
+            // Leaf: real part or faux waste.
+            const rectView = isVertical
+                ? createRectView(slice.x, slice.y, heightPx, widthPx, slice)
+                : createRectView(slice.x, slice.y, widthPx, heightPx, slice);
+
+            if (slice.rect.isFaux) {
+                sliceRects.push(rectView);
+            } else {
+                partRects.push(rectView);
+            }
+        }
+    }
+
+    return {sliceRects, partRects};
+}
+
+function createRectView(x: number, y: number, w: number, h: number, slice: Slice): RectView {
+    return {x, y, w, h, slice};
+}
+
+function createSlice(x: number, y: number, direction: string, rect: RectNode): Slice {
+    return {
+        x,
+        y,
+        direction,
+        rect,
+        getOppositeDirection: () => direction === 'H' ? 'V' : 'H'
+    };
 }
 
 /**

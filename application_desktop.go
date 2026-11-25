@@ -8,10 +8,8 @@ import (
 	"csp2d/util"
 	"fmt"
 	"net"
-	_ "net/http/pprof"
 	"os"
 	"runtime"
-	"runtime/debug"
 	"time"
 
 	"github.com/getlantern/systray"
@@ -19,6 +17,9 @@ import (
 
 func run(port int, ln net.Listener, url string) {
 	configuration := mvc.GetConfigurationFromBytes(embeddedConfig)
+	if _, err := mvc.ApplyMemorySettings(configuration.Memory); err != nil {
+		util.Error.Fatal(err)
+	}
 	ctx := context.Background()
 
 	go mvc.StartWebAppEmbedded(configuration, embeddedStatic, ln, port, ctx)
@@ -31,16 +32,14 @@ func run(port int, ln net.Listener, url string) {
 }
 
 func main() {
-	debug.SetGCPercent(-1)
-	debug.SetMemoryLimit(134217728)
 
-	port, ln, err := findFreePort(8080)
+	port, ln, err := getFreeSocket(8080)
 	if err != nil {
 		fmt.Println("Could not find a free port:", err)
 		return
 	}
 
-	url := fmt.Sprintf("http://localhost:%d", port)
+	url := fmt.Sprintf("http://127.0.0.1:%d", port) // the address getFreeSocket listens on
 	fmt.Printf("Starting server at %s\n", url)
 
 	if IsLaunchedFromTerminal() {

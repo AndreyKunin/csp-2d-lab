@@ -1,0 +1,73 @@
+# Production defaults (as defaults.yaml) in a container with 1 GiB of memory (FT-RSC-07).
+# Keep the rest in sync with application.yaml.
+webserver:
+  host: 127.0.0.1
+  port: 8080
+  staticDir: static
+
+defaults:
+  # Each simulation parameter: its default value and its validation rule (a request
+  # with a value outside the rule gets 400). The rule DSL is the UI's
+  # (static/src/utils/parameterDefinitions.ts): <int|float><[|(><min>-<max><]|)>,
+  # [ ] inclusive, ( ) exclusive, an empty bound unbounded: float[0-1], int[2-).
+  # Keep the rules in sync with parameterDefinitions.ts.
+  simulationParameters:
+    populationSize:
+      min:
+        default: 100
+        rule: "int[3-)"
+      max:
+        default: 60000
+        rule: "int[3-)"
+    eliteCount:
+      default: 10
+      rule: "int[1-)"
+    mutationRate:
+      default: 0.07
+      rule: "float[0-1]"
+    crossoverRate:
+      default: 0.75
+      rule: "float(0-1]"
+    maxEpochsCount:
+      default: 20000
+      rule: "int[1-)"
+    windowSize:
+      default: 50
+      rule: "int[1-250]"
+    cycleCount:
+      default: 10
+      rule: "int[1-)"
+    tournamentSize:
+      default: 5
+      rule: "int[2-)"
+    repairWeight:
+      default: 3
+      rule: "int[1-)"
+    flipWeight:
+      default: 1
+      rule: "int[1-)"
+    donorFraction:
+      default: 0.5
+      rule: "float(0-1]"
+
+# Start request limits. The total part count (the sum of the counts) is at most
+# maxPartsCount; 150 for D15 (FT-RSC-07), above the production 100.
+inputs:
+  maxPartsCount: 150
+
+# Job housekeeping: same as application.yaml.
+jobs:
+  maxActiveJobs: 0
+  idleTimeout: 10m
+
+# Process memory. GOMEMLIMIT and GOGC environment variables, when set, win over this section.
+memory:
+  # Memory the process may use: auto = the container (cgroup) limit, else the physical memory;
+  # none = unknown (no memory limit, unlimited arenas); or a size such as 2GiB, 512MiB.
+  available: 1GiB  # as a 1 GiB container limit would set it
+  # GOMEMLIMIT = available x limitRatio; the rest is for memory the Go runtime does not manage.
+  limitRatio: 0.9
+  # GC percent; -1 = off (only with a memory limit).
+  gogc: 100
+  # All job arenas together may hold GOMEMLIMIT x arenaRatio; the rest is for heap objects and the runtime.
+  arenaRatio: 0.5

@@ -16,19 +16,7 @@ export const ParametersPanel: React.FC<ParametersPanelProps> = ({ dashboardState
         return () => unsubscribe();
     }, [dashboardState]);
 
-    const minRate = useMemo(() => {
-        if (parameters) {
-            return '' + (+parameters.minRate.toFixed(3));
-        }
-        return '';
-    }, [parameters]);
 
-    const maxRate = useMemo(() => {
-        if (parameters) {
-            return '' + (+parameters.maxRate.toFixed(3));
-        }
-        return '';
-    }, [parameters]);
 
     const mutationRate = useMemo(() => {
         if (parameters) {
@@ -58,8 +46,6 @@ export const ParametersPanel: React.FC<ParametersPanelProps> = ({ dashboardState
         return '';
     }, [parameters]);
 
-    const minRatePattern = useMemo(() => getFillPattern(minRate), [minRate]);
-    const maxRatePattern = useMemo(() => getFillPattern(maxRate), [maxRate]);
     const mutationRatePattern = useMemo(() => getFillPattern(mutationRate), [mutationRate]);
     const eliteCountPattern = useMemo(() => getFillPattern(eliteCount), [eliteCount]);
     const windowSizePattern = useMemo(() => getFillPattern(windowSize), [windowSize]);
@@ -69,20 +55,12 @@ export const ParametersPanel: React.FC<ParametersPanelProps> = ({ dashboardState
         <div className="solutionVectorPanel">
             <div>Run time parameters</div>
             <div style={{flex: 1.3}}>
-                <div>Min rate</div>
-                <div>Max rate</div>
                 <div>Mutation rate</div>
                 <div>Elite count</div>
                 <div>Window size</div>
                 <div>Population</div>
             </div>
             <div className="ledDisplay" style={{flex: 1.7}}>
-                <div className="ledMono" style={{'--digit-pattern': `"${minRatePattern}"`} as React.CSSProperties}>
-                    {minRate}
-                </div>
-                <div className="ledMono" style={{'--digit-pattern': `"${maxRatePattern}"`} as React.CSSProperties}>
-                    {maxRate}
-                </div>
                 <div className="ledMono" style={{'--digit-pattern': `"${mutationRatePattern}"`} as React.CSSProperties}>
                     {mutationRate}
                 </div>
@@ -97,8 +75,6 @@ export const ParametersPanel: React.FC<ParametersPanelProps> = ({ dashboardState
                 </div>
             </div>
             <div style={{flex: 0.5}}>
-                <div>&nbsp;</div>
-                <div>&nbsp;</div>
                 <div>&nbsp;</div>
                 <div>&nbsp;</div>
                 <div>&nbsp;</div>

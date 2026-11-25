@@ -13,9 +13,11 @@ export const LabStatisticsPanel: React.FC<LabStatisticsPanelProps> = ({ dashboar
     const [state, setState] = useState(dashboardState.getStatistics()?.state);
     const [parameters, setParameters] = useState(dashboardState.getStatistics()?.parameters);
 
+    // Recomputed on every status update: the subscriber replaces state each poll
+    // (with startTime alone, Duration kept its first value, FE-05).
     const duration = useMemo(() =>
         startTime ? new Date(Date.now() - startTime.valueOf()).toISOString().substring(11, 19) : ''
-        , [startTime]
+        , [startTime, state]
     );
 
     useEffect(() => {
@@ -41,7 +43,15 @@ export const LabStatisticsPanel: React.FC<LabStatisticsPanelProps> = ({ dashboar
         return '';
     }, [parameters]);
 
+    const restarts = useMemo(() => {
+        if (state) {
+            return '' + (state.cycles ?? 0);
+        }
+        return '';
+    }, [state]);
+
     const durationPattern = useMemo(() => getFillPattern(duration), [duration]);
+    const restartsPattern = useMemo(() => getFillPattern(restarts), [restarts]);
     const epochNumberPattern = useMemo(() => getFillPattern(epochNumber), [epochNumber]);
     const epochsCountPattern = useMemo(() => getFillPattern(epochsCount), [epochsCount]);
 
@@ -52,6 +62,7 @@ export const LabStatisticsPanel: React.FC<LabStatisticsPanelProps> = ({ dashboar
                 <div>Duration</div>
                 <div>Generation #</div>
                 <div>Generations</div>
+                <div>Restarts</div>
             </div>
             <div className="ledDisplay">
                 {status && <StatusDisplay status={status} />}
@@ -64,8 +75,12 @@ export const LabStatisticsPanel: React.FC<LabStatisticsPanelProps> = ({ dashboar
                 <div className="ledMono" style={{'--digit-pattern': `"${epochsCountPattern}"`} as React.CSSProperties}>
                     {epochsCount}
                 </div>
+                <div className="ledMono" style={{'--digit-pattern': `"${restartsPattern}"`} as React.CSSProperties}>
+                    {restarts}
+                </div>
             </div>
             <div>
+                <div>&nbsp;</div>
                 <div>&nbsp;</div>
                 <div>&nbsp;</div>
                 <div>&nbsp;</div>

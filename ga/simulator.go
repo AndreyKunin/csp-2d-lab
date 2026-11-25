@@ -1,13 +1,62 @@
 package ga
 
 import (
+	"context"
 	"crypto/rand"
 	"csp2d/problem"
 	"csp2d/util"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"runtime"
+	"runtime/debug"
 	"sync"
+	"time"
 )
+
+// ErrTooManyJobs is returned by StartSimulation when MaxActiveJobs unfinished
+// jobs already exist.
+var ErrTooManyJobs = errors.New("too many active simulations")
+
+// ErrSimulationNotFound is wrapped by the errors for an unknown (or deleted)
+// simulation; ErrInvalidState by the errors for a call the simulation's status
+// does not allow (pause a paused job, resume a running one, any control call on
+// a finished one). The HTTP layer maps them to 404 and 409.
+var (
+	ErrSimulationNotFound = errors.New("simulation not found")
+	ErrInvalidState       = errors.New("invalid simulation state")
+)
+
+// simulationError keeps the message and wraps a kind (errors.Is).
+type simulationError struct {
+	kind    error
+	message string
+}
+
+func (e *simulationError) Error() string { return e.message }
+func (e *simulationError) Unwrap() error { return e.kind }
+
+func notFound(id string) error {
+	return &simulationError{ErrSimulationNotFound, fmt.Sprintf("simulation %s not found", id)}
+}
+
+func invalidState(format string, args ...any) error {
+	return &simulationError{ErrInvalidState, fmt.Sprintf(format, args...)}
+}
+
+// Limits configures job housekeeping. Zero values select the defaults.
+type Limits struct {
+	// MaxActiveJobs caps the registered jobs whose goroutine has not finished
+	// (running or paused). 0 means runtime.GOMAXPROCS(0); negative means no limit.
+	MaxActiveJobs int
+	// IdleTimeout: a job that no API call has looked up for this long is
+	// cancelled and removed, whatever its status. 0 means DefaultIdleTimeout;
+	// negative disables the sweeper.
+	IdleTimeout time.Duration
+}
+
+// DefaultIdleTimeout is used when Limits.IdleTimeout is 0.
+const DefaultIdleTimeout = 10 * time.Minute
 
 type SimulationManager interface {
 	StartSimulation(simulation *Simulation, problem problem.Problem) (SimulationJobStatus, error)
@@ -15,7 +64,9 @@ type SimulationManager interface {
 	ResumeSimulation(id string) error
 	GetSimulationStatus(id string) (SimulationJobStatus, error)
 	GetSimulationStatistics(id string) (SimulationJobStatus, error)
-	GetSimulationProblem(id string) (problem.Problem, error)
+	// GetSimulationResult returns the problem's last published result snapshot
+	// (see ResultSnapshotter), or nil if none has been published yet.
+	GetSimulationResult(id string) (any, error)
 	DeleteSimulation(id string) (SimulationJobStatus, error)
 	ConfigureSimulation(id string, parameters *Parameters) error
 }
@@ -23,12 +74,97 @@ type SimulationManager interface {
 type SimulationManagerImpl struct {
 	jobs map[string]*SimulationJob
 	mu   sync.RWMutex
+
+	maxActiveJobs int           // <= 0: unlimited
+	idleTimeout   time.Duration // <= 0: never swept
 }
 
+// NewSimulationManager returns a manager without job limits or sweeping.
 func NewSimulationManager() SimulationManager {
 	return &SimulationManagerImpl{
 		jobs: make(map[string]*SimulationJob),
 	}
+}
+
+// NewSimulationManagerWithLimits returns a manager that refuses new jobs beyond
+// limits.MaxActiveJobs and, until ctx is done, periodically removes jobs idle
+// for longer than limits.IdleTimeout.
+func NewSimulationManagerWithLimits(ctx context.Context, limits Limits) *SimulationManagerImpl {
+	sm := &SimulationManagerImpl{
+		jobs:          make(map[string]*SimulationJob),
+		maxActiveJobs: limits.MaxActiveJobs,
+		idleTimeout:   limits.IdleTimeout,
+	}
+	if sm.maxActiveJobs == 0 {
+		sm.maxActiveJobs = runtime.GOMAXPROCS(0)
+	}
+	if sm.idleTimeout == 0 {
+		sm.idleTimeout = DefaultIdleTimeout
+	}
+	if sm.idleTimeout > 0 {
+		go sm.sweepLoop(ctx)
+	}
+	return sm
+}
+
+// sweepLoop runs Sweep every tenth of the idle timeout, but at most once a second.
+func (sm *SimulationManagerImpl) sweepLoop(ctx context.Context) {
+	ticker := time.NewTicker(max(sm.idleTimeout/10, time.Second))
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case now := <-ticker.C:
+			sm.Sweep(now)
+		}
+	}
+}
+
+// Sweep cancels and removes every job that no API call has looked up since
+// now - IdleTimeout, and returns how many it removed.
+func (sm *SimulationManagerImpl) Sweep(now time.Time) int {
+	if sm.idleTimeout <= 0 {
+		return 0
+	}
+	deadline := now.Add(-sm.idleTimeout)
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	removed := 0
+	for id, job := range sm.jobs {
+		if job.lastAccessTime().Before(deadline) {
+			job.cancel()
+			delete(sm.jobs, id)
+			removed++
+			util.Info.Printf("Simulation %s (%s) removed: no client access for %s",
+				id, job.GetStatus().Status, sm.idleTimeout)
+		}
+	}
+	return removed
+}
+
+// lookup returns the job and records the access, which keeps it from being swept.
+func (sm *SimulationManagerImpl) lookup(id string) (*SimulationJob, bool) {
+	sm.mu.RLock()
+	job, exists := sm.jobs[id]
+	sm.mu.RUnlock()
+	if exists {
+		job.touch(time.Now())
+	}
+	return job, exists
+}
+
+// activeJobs counts registered jobs whose goroutine has not finished. The caller holds sm.mu.
+func (sm *SimulationManagerImpl) activeJobs() int {
+	n := 0
+	for _, job := range sm.jobs {
+		select {
+		case <-job.finished:
+		default:
+			n++
+		}
+	}
+	return n
 }
 
 func (sm *SimulationManagerImpl) StartSimulation(simulation *Simulation, problem problem.Problem) (SimulationJobStatus, error) {
@@ -40,6 +176,10 @@ func (sm *SimulationManagerImpl) StartSimulation(simulation *Simulation, problem
 	job := NewSimulationJob(id, simulation, problem)
 
 	sm.mu.Lock()
+	if sm.maxActiveJobs > 0 && sm.activeJobs() >= sm.maxActiveJobs {
+		sm.mu.Unlock()
+		return SimulationJobStatus{}, fmt.Errorf("%w (limit %d)", ErrTooManyJobs, sm.maxActiveJobs)
+	}
 	sm.jobs[id] = job
 	sm.mu.Unlock()
 
@@ -49,88 +189,91 @@ func (sm *SimulationManagerImpl) StartSimulation(simulation *Simulation, problem
 }
 
 func (sm *SimulationManagerImpl) PauseSimulation(id string) error {
-	sm.mu.Lock()
-	job, exists := sm.jobs[id]
-	sm.mu.Unlock()
-
-	if !exists {
-		return fmt.Errorf("simulation %s not found", id)
-	}
-	status := job.GetStatus()
-	if status.Status == StatusPaused {
-		return fmt.Errorf("simulation %s is already paused", id)
-	}
-
-	select {
-	case job.PauseChan <- struct{}{}:
-		<-job.PauseAckChan
-	default:
-		return fmt.Errorf("pause signal already sent for simulation %s", id)
-	}
-
-	return nil
+	return sm.control(id, StatusRunning, func(job *SimulationJob) (chan struct{}, chan struct{}) {
+		return job.PauseChan, job.PauseAckChan
+	})
 }
 
 func (sm *SimulationManagerImpl) ResumeSimulation(id string) error {
-	sm.mu.Lock()
-	job, exists := sm.jobs[id]
-	sm.mu.Unlock()
+	return sm.control(id, StatusPaused, func(job *SimulationJob) (chan struct{}, chan struct{}) {
+		return job.ResumeChan, job.ResumeAckChan
+	})
+}
 
+// control sends one control signal (pause or resume) to a job's goroutine and
+// waits for its acknowledgement.
+//
+// Control calls on a job are serialised (controlMu), so the status check and the
+// signal cannot interleave with another control call. The job must be in the
+// required status; a finished or failed job is refused instead of waiting for an
+// acknowledgement that would never come. If the job finishes or is deleted while
+// the call waits, the call returns an error instead of blocking.
+func (sm *SimulationManagerImpl) control(id string, required SimulationStatus,
+	channels func(job *SimulationJob) (signal chan struct{}, ack chan struct{})) error {
+	job, exists := sm.lookup(id)
 	if !exists {
-		return fmt.Errorf("simulation %s not found", id)
-	}
-	status := job.GetStatus()
-	if status.Status == StatusRunning {
-		return fmt.Errorf("simulation %s is already running", id)
+		return notFound(id)
 	}
 
+	job.controlMu.Lock()
+	defer job.controlMu.Unlock()
+
+	if status := job.GetStatus().Status; status != required {
+		switch status {
+		case StatusPaused:
+			return invalidState("simulation %s is already paused", id)
+		case StatusRunning:
+			return invalidState("simulation %s is already running", id)
+		default:
+			return invalidState("simulation %s is %s", id, status)
+		}
+	}
+
+	signal, ack := channels(job)
 	select {
-	case job.ResumeChan <- struct{}{}:
-		<-job.ResumeAckChan
-	default:
-		return fmt.Errorf("resume signal already sent for simulation %s", id)
+	case signal <- struct{}{}:
+	case <-job.finished:
+		return invalidState("simulation %s is %s", id, job.GetStatus().Status)
+	case <-job.done:
+		return &simulationError{ErrSimulationNotFound, fmt.Sprintf("simulation %s was deleted", id)}
 	}
-
-	return nil
+	select {
+	case <-ack:
+		return nil
+	case <-job.finished:
+		return invalidState("simulation %s is %s", id, job.GetStatus().Status)
+	case <-job.done:
+		return &simulationError{ErrSimulationNotFound, fmt.Sprintf("simulation %s was deleted", id)}
+	}
 }
 
 func (sm *SimulationManagerImpl) GetSimulationStatus(id string) (SimulationJobStatus, error) {
-	sm.mu.Lock()
-	defer sm.mu.Unlock()
-
-	job, exists := sm.jobs[id]
+	job, exists := sm.lookup(id)
 	if !exists {
-		return SimulationJobStatus{}, fmt.Errorf("simulation %s not found", id)
+		return SimulationJobStatus{}, notFound(id)
 	}
 
 	return job.GetStatus(), nil
 }
 
 func (sm *SimulationManagerImpl) GetSimulationStatistics(id string) (SimulationJobStatus, error) {
-	sm.mu.Lock()
-	defer sm.mu.Unlock()
-
-	job, exists := sm.jobs[id]
+	job, exists := sm.lookup(id)
 	if !exists {
-		return SimulationJobStatus{}, fmt.Errorf("simulation %s not found", id)
+		return SimulationJobStatus{}, notFound(id)
 	}
 	stats := job.GetStatus()
-	stats.Statistics = job.getSimulation()
-	stats.Problem = job.getProblemStats()
+	stats.Statistics, stats.Problem, _ = job.snapshot()
 
 	return stats, nil
 }
 
-func (sm *SimulationManagerImpl) GetSimulationProblem(id string) (problem.Problem, error) {
-	sm.mu.Lock()
-	defer sm.mu.Unlock()
-
-	job, exists := sm.jobs[id]
+func (sm *SimulationManagerImpl) GetSimulationResult(id string) (any, error) {
+	job, exists := sm.lookup(id)
 	if !exists {
-		return nil, fmt.Errorf("simulation %s not found", id)
+		return nil, notFound(id)
 	}
-
-	return job.problem, nil
+	_, _, result := job.snapshot()
+	return result, nil
 }
 
 func (sm *SimulationManagerImpl) DeleteSimulation(id string) (SimulationJobStatus, error) {
@@ -139,13 +282,12 @@ func (sm *SimulationManagerImpl) DeleteSimulation(id string) (SimulationJobStatu
 
 	job, exists := sm.jobs[id]
 	if !exists {
-		return SimulationJobStatus{}, fmt.Errorf("simulation %s not found", id)
+		return SimulationJobStatus{}, notFound(id)
 	}
 
-	select {
-	case job.PauseChan <- struct{}{}:
-	default:
-	}
+	// Stop the job's goroutine (running or paused) so that it and the problem's
+	// memory are released; a finished job ignores this.
+	job.cancel()
 
 	delete(sm.jobs, id)
 
@@ -153,12 +295,9 @@ func (sm *SimulationManagerImpl) DeleteSimulation(id string) (SimulationJobStatu
 }
 
 func (sm *SimulationManagerImpl) ConfigureSimulation(id string, parameters *Parameters) error {
-	sm.mu.Lock()
-	job, exists := sm.jobs[id]
-	sm.mu.Unlock()
-
+	job, exists := sm.lookup(id)
 	if !exists {
-		return fmt.Errorf("simulation %s not found", id)
+		return notFound(id)
 	}
 
 	err := job.UpdateSimulationParameters(parameters)
@@ -181,6 +320,21 @@ func (sm *SimulationManagerImpl) generateSimulationID() (string, error) {
 }
 
 func (sm *SimulationManagerImpl) runSimulation(job *SimulationJob) {
+	// Registered first, so it runs last: the final status is set before
+	// waiting control calls are released.
+	defer close(job.finished)
+	defer func() {
+		// Runs after the recover below has set the final status, and before
+		// finished is closed. Nothing but this goroutine uses the problem.
+		if releaser, ok := job.problem.(Releaser); ok {
+			releaser.Release()
+			// Without new allocations the GC would not run again for up to two
+			// minutes (the runtime's forced period), so the released memory would
+			// stay resident. Collect it and return it to the OS now; jobs end
+			// rarely, and this only blocks the ending job's goroutine.
+			debug.FreeOSMemory()
+		}
+	}()
 	defer func() {
 		if r := recover(); r != nil {
 			err := fmt.Errorf("simulation panicked: %v", r)
@@ -189,9 +343,13 @@ func (sm *SimulationManagerImpl) runSimulation(job *SimulationJob) {
 		}
 	}()
 
+	// A finished job stays registered until it is deleted or swept (Limits.IdleTimeout).
 	err := Simulate(job)
-	//TODO: these finished jobs need to be deleted eventually
 
+	if errors.Is(err, ErrSimulationCancelled) {
+		util.Info.Printf("Simulation %s cancelled (deleted)", job.id)
+		return
+	}
 	if err != nil {
 		util.Warning.Println(err.Error())
 		job.UpdateJobStatus(StatusError, err)
